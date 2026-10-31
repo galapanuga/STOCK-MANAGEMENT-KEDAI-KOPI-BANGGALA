@@ -1,6 +1,7 @@
 import type { Bahan, DB, LogAktivitas, Mutasi, Pengaturan, User } from '../types'
 import { buatPassword } from './auth'
 import { muatDB, simpanDB } from './storage'
+import { PENGATURAN_RESMI } from './dataAwal'
 
 export const KATEGORI_BAWAAN = [
   'Biji Kopi',
@@ -23,9 +24,7 @@ export const SATUAN_BAWAAN = [
 ]
 
 const PENGATURAN_BAWAAN: Pengaturan = {
-  namaKedai: 'Kedai Kopi Banggala',
-  alamat: 'Jl. Kopi No. 17, Bandung',
-  telepon: '0812-3456-7890',
+  ...PENGATURAN_RESMI,
   kategoriBahan: KATEGORI_BAWAAN,
   satuanBahan: SATUAN_BAWAAN,
 }
@@ -248,6 +247,8 @@ export async function buatDatabaseAwal(): Promise<DB> {
     users: [admin],
     bahan: daftarBahan(),
     mutasi: daftarMutasi(admin),
+    menu: [],
+    penjualan: [],
     pengaturan: PENGATURAN_BAWAAN,
     log: daftarLog(admin),
   }

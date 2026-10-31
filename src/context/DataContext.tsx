@@ -21,6 +21,7 @@ import { uid } from '../lib/id'
 import { formatAngka } from '../lib/format'
 import { hitungStok } from '../lib/stock'
 import { buatDatabaseAwal, KATEGORI_BAWAAN, SATUAN_BAWAAN } from '../lib/seed'
+import { PENGATURAN_RESMI } from '../lib/dataAwal'
 import { useAuth } from './AuthContext'
 
 export interface InputBahan {
@@ -577,10 +578,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         mutasi: Array.isArray(data.mutasi)
           ? data.mutasi.filter((m) => m && m.id && m.bahanId)
           : [],
+        menu: Array.isArray(data.menu) ? data.menu : [],
+        penjualan: Array.isArray(data.penjualan) ? data.penjualan : [],
         pengaturan: {
-          namaKedai: data.pengaturan?.namaKedai || 'Kedai Kopi Banggala',
-          alamat: data.pengaturan?.alamat ?? '',
-          telepon: data.pengaturan?.telepon ?? '',
+          ...PENGATURAN_RESMI,
+          ...data.pengaturan,
           kategoriBahan: Array.isArray(data.pengaturan?.kategoriBahan)
             ? data.pengaturan.kategoriBahan
             : KATEGORI_BAWAAN,

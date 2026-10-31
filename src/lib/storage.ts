@@ -1,4 +1,5 @@
 import type { DB } from '../types'
+import { PENGATURAN_RESMI } from './dataAwal'
 
 export const KUNCI_DB = 'banggala_db_v1'
 
@@ -13,13 +14,12 @@ export function muatDB(): DB | null {
       users: db.users,
       bahan: db.bahan,
       mutasi: Array.isArray(db.mutasi) ? db.mutasi : [],
+      menu: Array.isArray(db.menu) ? db.menu : [],
+      penjualan: Array.isArray(db.penjualan) ? db.penjualan : [],
       log: Array.isArray(db.log) ? db.log : [],
       pengaturan: {
-        namaKedai: db.pengaturan?.namaKedai ?? 'Kedai Kopi Banggala',
-        alamat: db.pengaturan?.alamat ?? '',
-        telepon: db.pengaturan?.telepon ?? '',
-        kategoriBahan: db.pengaturan?.kategoriBahan ?? [],
-        satuanBahan: db.pengaturan?.satuanBahan ?? [],
+        ...PENGATURAN_RESMI,
+        ...db.pengaturan,
       },
     }
   } catch {

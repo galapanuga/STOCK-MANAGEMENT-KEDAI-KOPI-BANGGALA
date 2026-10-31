@@ -110,6 +110,7 @@ export interface Pengaturan {
   namaKedai: string
   tagline: string
   alamat: string
+  telepon: string
   kota: string
   /** yyyy-mm-dd */
   tanggalBerdiri: string

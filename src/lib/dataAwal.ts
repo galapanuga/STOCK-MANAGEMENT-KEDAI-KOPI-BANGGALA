@@ -45,6 +45,7 @@ export const PENGATURAN_RESMI: Pengaturan = {
   tagline: 'Sedikit, tapi terus berjalan.',
   alamat:
     'Jl. Serbaguna, Jadimulya, Kec. Gunungjati, Kabupaten Cirebon, Jawa Barat 45151',
+  telepon: '0812-3456-7890',
   kota: 'Gunungjati, Cirebon',
   tanggalBerdiri: '2024-01-15',
   halalId: 'ID31410022479980525',
