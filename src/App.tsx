@@ -8,6 +8,8 @@ import { MutasiPage } from './pages/MutasiPage'
 import { LaporanPage } from './pages/LaporanPage'
 import { PenggunaPage } from './pages/PenggunaPage'
 import { PengaturanPage } from './pages/PengaturanPage'
+import { MenuPage } from './pages/MenuPage'
+import { PenjualanPage } from './pages/PenjualanPage'
 
 export default function App() {
   return (
@@ -18,6 +20,8 @@ export default function App() {
           <Route element={<Layout />}>
             <Route index element={<DashboardPage />} />
             <Route path="bahan" element={<BahanPage />} />
+            <Route path="menu" element={<MenuPage />} />
+            <Route path="penjualan" element={<PenjualanPage />} />
             <Route path="mutasi" element={<MutasiPage />} />
             <Route path="laporan" element={<LaporanPage />} />
             <Route element={<AdminRoute />}>

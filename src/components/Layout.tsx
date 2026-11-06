@@ -4,12 +4,13 @@ import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
 import {
+  IconBook,
   IconBox,
   IconChart,
-  IconCoffee,
   IconGrid,
   IconLogout,
   IconMenu,
+  IconReceipt,
   IconSettings,
   IconSwap,
   IconUsers,
@@ -20,6 +21,8 @@ import { formatTanggalPanjang, sapaan } from '../lib/format'
 const JUDUL_HALAMAN: Record<string, string> = {
   '/': 'Dashboard',
   '/bahan': 'Bahan & Stok',
+  '/menu': 'Menu & Resep',
+  '/penjualan': 'Penjualan',
   '/mutasi': 'Mutasi Stok',
   '/laporan': 'Laporan',
   '/pengguna': 'Pengguna',
@@ -59,6 +62,8 @@ export function Layout() {
 
   const navigasi = [
     { ke: '/', label: 'Dashboard', ikon: IconGrid, tepat: true },
+    { ke: '/menu', label: 'Menu & Resep', ikon: IconBook },
+    { ke: '/penjualan', label: 'Penjualan', ikon: IconReceipt },
     { ke: '/bahan', label: 'Bahan & Stok', ikon: IconBox },
     { ke: '/mutasi', label: 'Mutasi Stok', ikon: IconSwap },
     { ke: '/laporan', label: 'Laporan', ikon: IconChart },
@@ -75,7 +80,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-cream">
+    <div className="app-surface min-h-screen">
       {menuTerbuka && (
         <div
           className="animate-fade fixed inset-0 z-40 bg-espresso/50 backdrop-blur-[1px] lg:hidden"
@@ -90,15 +95,19 @@ export function Layout() {
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-xl bg-caramel text-white shadow-lg shadow-black/20">
-              <IconCoffee className="size-5.5" />
+            <div className="flex h-11 w-[76px] shrink-0 items-center justify-center rounded-xl bg-paper px-1.5 shadow-lg shadow-black/20">
+              <img
+                src="/images/logo.png"
+                alt="Kedai Kopi Banggala"
+                className="w-full object-contain"
+              />
             </div>
             <div>
-              <p className="font-display text-[19px] leading-none font-bold tracking-wide text-white">
-                Banggala
+              <p className="font-display text-[15px] leading-tight font-bold tracking-tight text-white">
+                Banggala Stock
               </p>
-              <p className="mt-1 text-[9px] font-semibold tracking-[0.22em] text-latte/60 uppercase">
-                Stock Management
+              <p className="mt-1 text-[9px] font-semibold tracking-[0.15em] text-latte/60 uppercase">
+                Kedai Kopi Banggala
               </p>
             </div>
           </div>
@@ -188,7 +197,7 @@ export function Layout() {
       </aside>
 
       <div className="app-shell flex min-h-screen flex-col lg:pl-[268px]">
-        <header className="no-print sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-cream/85 px-4 backdrop-blur-md lg:px-8">
+        <header className="no-print sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-paper/90 px-4 shadow-[0_2px_10px_rgba(42,24,16,0.025)] backdrop-blur-md lg:px-8">
           <div className="flex items-center gap-3">
             <button
               className="rounded-lg border border-line bg-white p-2 text-mocha lg:hidden"
@@ -198,7 +207,7 @@ export function Layout() {
               <IconMenu className="size-5" />
             </button>
             <div>
-              <p className="text-[10px] font-semibold tracking-[0.18em] text-muted uppercase">
+              <p className="eyebrow text-muted">
                 {db.pengaturan.namaKedai}
               </p>
               <p className="font-display text-[15px] font-bold text-espresso">
@@ -226,7 +235,7 @@ export function Layout() {
         </main>
 
         <footer className="no-print border-t border-line px-4 py-4 text-center text-[11px] text-muted lg:px-8">
-          Banggala Stock v1.0 · Sistem pencatatan stok bahan kedai kopi
+          Banggala Stock v2.0 · Pencatatan stok, menu, dan penjualan kedai kopi
         </footer>
       </div>
     </div>

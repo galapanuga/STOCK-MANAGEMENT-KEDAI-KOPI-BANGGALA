@@ -19,7 +19,6 @@ import {
   akhirHari,
   awalHari,
   formatAngka,
-  formatRupiah,
   formatTanggal,
   formatWaktu,
   keWaktuInput,
@@ -95,16 +94,8 @@ export function MutasiPage() {
       )
   }, [bahanFilter, bahanMap, cari, dari, db.mutasi, sampai, tipe])
 
-  const totalNilaiMasuk = daftar.reduce((total, m) => {
-    if (m.tipe !== 'masuk') return total
-    const harga = m.hargaSatuan ?? stok.get(m.bahanId)?.hargaRataRata ?? 0
-    return total + m.jumlah * harga
-  }, 0)
-
-  const totalNilaiKeluar = daftar.reduce((total, m) => {
-    if (m.tipe !== 'keluar') return total
-    return total + m.jumlah * (stok.get(m.bahanId)?.hargaRataRata ?? 0)
-  }, 0)
+  const jumlahMasuk = daftar.filter((m) => m.tipe === 'masuk').length
+  const jumlahKeluar = daftar.filter((m) => m.tipe === 'keluar').length
 
   const totalHalaman = Math.max(1, Math.ceil(daftar.length / PAGE))
   const halamanAman = Math.min(halaman, totalHalaman)
@@ -181,11 +172,9 @@ export function MutasiPage() {
           </span>
           <div>
             <p className="text-[10px] font-bold tracking-wider text-muted uppercase">
-              Nilai Masuk
+              Catatan Masuk
             </p>
-            <p className="text-base font-bold text-success">
-              {formatRupiah(totalNilaiMasuk)}
-            </p>
+            <p className="text-base font-bold text-success">{jumlahMasuk}</p>
           </div>
         </div>
         <div className="card flex items-center gap-3 px-4 py-3">
@@ -194,11 +183,9 @@ export function MutasiPage() {
           </span>
           <div>
             <p className="text-[10px] font-bold tracking-wider text-muted uppercase">
-              Estimasi Nilai Keluar
+              Catatan Keluar
             </p>
-            <p className="text-base font-bold text-coffee">
-              {formatRupiah(totalNilaiKeluar)}
-            </p>
+            <p className="text-base font-bold text-coffee">{jumlahKeluar}</p>
           </div>
         </div>
       </div>
@@ -307,8 +294,6 @@ export function MutasiPage() {
                     <th>Bahan</th>
                     <th>Tipe</th>
                     <th className="text-right">Jumlah</th>
-                    <th className="text-right">Harga Satuan</th>
-                    <th className="text-right">Nilai</th>
                     <th>Keterangan</th>
                     <th>Oleh</th>
                     <th className="text-right">Aksi</th>
@@ -317,9 +302,6 @@ export function MutasiPage() {
                 <tbody>
                   {tampil.map((m) => {
                     const bahan = bahanMap.get(m.bahanId)
-                    const harga =
-                      m.hargaSatuan ?? stok.get(m.bahanId)?.hargaRataRata ?? 0
-                    const nilai = m.jumlah * harga
                     return (
                       <tr key={m.id}>
                         <td className="whitespace-nowrap">
@@ -350,14 +332,6 @@ export function MutasiPage() {
                             {bahan?.satuan}
                           </span>
                         </td>
-                        <td className="text-right text-xs whitespace-nowrap text-mocha">
-                          {m.tipe === 'masuk' && m.hargaSatuan
-                            ? formatRupiah(m.hargaSatuan)
-                            : '—'}
-                        </td>
-                        <td className="text-right text-xs font-semibold whitespace-nowrap text-ink">
-                          {formatRupiah(nilai)}
-                        </td>
                         <td className="max-w-56">
                           <p className="truncate text-xs text-mocha">
                             {m.keterangan || '—'}
@@ -372,7 +346,11 @@ export function MutasiPage() {
                           {m.userName}
                         </td>
                         <td>
-                          {user?.role === 'admin' ? (
+                          {m.penjualanId ? (
+                            <p className="text-right text-[10px] font-semibold whitespace-nowrap text-caramel">
+                              Dari penjualan
+                            </p>
+                          ) : user?.role === 'admin' ? (
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 className="btn btn-ghost btn-sm"
@@ -499,7 +477,6 @@ function MutasiModal({
   const [tipe, setTipe] = useState<MutasiTipe>('masuk')
   const [bahanId, setBahanId] = useState('')
   const [jumlah, setJumlah] = useState('')
-  const [harga, setHarga] = useState('')
   const [alasan, setAlasan] = useState('Pemakaian')
   const [keterangan, setKeterangan] = useState('')
   const [tanggal, setTanggal] = useState(sekarangInput())
@@ -521,7 +498,6 @@ function MutasiModal({
       setTipe(mutasi.tipe)
       setBahanId(mutasi.bahanId)
       setJumlah(String(mutasi.jumlah))
-      setHarga(mutasi.hargaSatuan ? String(mutasi.hargaSatuan) : '')
       setAlasan(mutasi.alasan ?? 'Pemakaian')
       setKeterangan(mutasi.keterangan ?? '')
       setTanggal(keWaktuInput(mutasi.tanggal))
@@ -533,7 +509,6 @@ function MutasiModal({
           : (opsiBahan[0]?.id ?? ''),
       )
       setJumlah('')
-      setHarga('')
       setAlasan('Pemakaian')
       setKeterangan('')
       setTanggal(sekarangInput())
@@ -578,7 +553,6 @@ function MutasiModal({
         bahanId,
         tipe,
         jumlah: jumlahAngka,
-        hargaSatuan: tipe === 'masuk' ? keDesimal(harga) : undefined,
         alasan: tipe === 'keluar' ? alasan : undefined,
         keterangan,
         tanggal: waktu.toISOString(),
@@ -707,32 +681,7 @@ function MutasiModal({
             </div>
           </Field>
 
-          {tipe === 'masuk' ? (
-            <Field
-              label="Harga Satuan"
-              htmlFor="mutasi-harga"
-              hint="Opsional, untuk menghitung nilai & harga rata-rata."
-            >
-              <div className="relative">
-                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs text-muted">
-                  Rp
-                </span>
-                <input
-                  id="mutasi-harga"
-                  type="number"
-                  min={0}
-                  step="any"
-                  className="input pr-16 pl-9"
-                  value={harga}
-                  onChange={(e) => setHarga(e.target.value)}
-                  placeholder="0"
-                />
-                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[11px] text-muted">
-                  /{bahan?.satuan ?? 'satuan'}
-                </span>
-              </div>
-            </Field>
-          ) : (
+          {tipe === 'keluar' && (
             <Field label="Alasan" htmlFor="mutasi-alasan">
               <select
                 id="mutasi-alasan"

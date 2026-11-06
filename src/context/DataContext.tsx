@@ -8,10 +8,14 @@ import {
 import type {
   Bahan,
   DB,
+  ItemPenjualan,
   LogAktivitas,
+  Menu,
   Mutasi,
   MutasiTipe,
   Pengaturan,
+  Penjualan,
+  ResepItem,
   Role,
   StokInfo,
   User,
@@ -20,8 +24,9 @@ import { buatPassword } from '../lib/auth'
 import { uid } from '../lib/id'
 import { formatAngka } from '../lib/format'
 import { hitungStok } from '../lib/stock'
-import { buatDatabaseAwal, KATEGORI_BAWAAN, SATUAN_BAWAAN } from '../lib/seed'
-import { PENGATURAN_RESMI } from '../lib/dataAwal'
+import { kebutuhanBahan, menuTanpaResep, periksaKetersediaan } from '../lib/menu'
+import { buatDatabaseAwal } from '../lib/seed'
+import { normalisasiDB } from '../lib/storage'
 import { useAuth } from './AuthContext'
 
 export interface InputBahan {
@@ -30,7 +35,6 @@ export interface InputBahan {
   satuan: string
   stokMin: number
   stokAwal?: number
-  hargaAwal?: number
   keteranganAwal?: string
 }
 
@@ -38,10 +42,23 @@ export interface InputMutasi {
   bahanId: string
   tipe: MutasiTipe
   jumlah: number
-  hargaSatuan?: number
   alasan?: string
   keterangan?: string
   tanggal: string
+}
+
+export interface InputMenu {
+  nama: string
+  kategori: string
+  deskripsi?: string
+  resep: ResepItem[]
+  resepEstimasi: boolean
+}
+
+export interface InputPenjualan {
+  tanggal: string
+  items: { menuId: string; jumlah: number }[]
+  catatan?: string
 }
 
 export interface InputUser {
@@ -56,12 +73,19 @@ interface DataContextValue {
   db: DB
   stok: Map<string, StokInfo>
   bahanMap: Map<string, Bahan>
+  menuMap: Map<string, Menu>
   tambahBahan: (input: InputBahan) => Bahan
   ubahBahan: (id: string, input: InputBahan) => void
   arsipBahan: (id: string, arsip: boolean) => void
   tambahMutasi: (input: InputMutasi) => Mutasi
   ubahMutasi: (id: string, input: InputMutasi) => void
   hapusMutasi: (id: string) => void
+  tambahMenu: (input: InputMenu) => Menu
+  ubahMenu: (id: string, input: InputMenu) => void
+  arsipMenu: (id: string, arsip: boolean) => void
+  catatPenjualan: (input: InputPenjualan) => Penjualan
+  ubahPenjualan: (id: string, input: InputPenjualan) => void
+  hapusPenjualan: (id: string) => void
   tambahUser: (input: InputUser) => Promise<void>
   ubahUser: (
     id: string,
@@ -80,6 +104,117 @@ interface DataContextValue {
 
 const DataContext = createContext<DataContextValue | null>(null)
 
+function kodeTanggal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
+}
+
+function buatNomorPenjualan(penjualan: Penjualan[], tanggal: Date): string {
+  const awalan = `PJ-${kodeTanggal(tanggal)}-`
+  let maks = 0
+  for (const p of penjualan) {
+    if (!p.nomor?.startsWith(awalan)) continue
+    const urut = Number(p.nomor.slice(awalan.length))
+    if (Number.isFinite(urut) && urut > maks) maks = urut
+  }
+  return `${awalan}${String(maks + 1).padStart(3, '0')}`
+}
+
+function bersihkanResep(
+  resep: ResepItem[],
+  bahanMap: Map<string, Bahan>,
+): ResepItem[] {
+  const peta = new Map<string, number>()
+  for (const item of resep) {
+    if (!bahanMap.has(item.bahanId)) {
+      throw new Error('Ada bahan resep yang tidak ditemukan.')
+    }
+    if (!(item.jumlah > 0)) {
+      throw new Error('Jumlah setiap bahan resep harus lebih dari 0.')
+    }
+    peta.set(item.bahanId, (peta.get(item.bahanId) ?? 0) + item.jumlah)
+  }
+  return [...peta.entries()].map(([bahanId, jumlah]) => ({
+    bahanId,
+    jumlah: Math.round(jumlah * 1000) / 1000,
+  }))
+}
+
+interface HasilPenjualan {
+  items: ItemPenjualan[]
+  mutasi: Mutasi[]
+  stokTerpotong: boolean
+}
+
+function siapkanPenjualan(
+  input: InputPenjualan,
+  db: DB,
+  stokDasar: Map<string, StokInfo>,
+  penjualanId: string,
+  nomor: string,
+  userId: string,
+  userName: string,
+  menuArsipDiizinkan?: Set<string>,
+): HasilPenjualan {
+  const menuMap = new Map(db.menu.map((m) => [m.id, m]))
+  const bahanMap = new Map(db.bahan.map((b) => [b.id, b]))
+
+  const itemBersih = input.items
+    .filter((it) => it.jumlah > 0)
+    .map((it) => {
+      const menu = menuMap.get(it.menuId)
+      if (!menu) throw new Error('Menu pada transaksi tidak ditemukan.')
+      // Menu yang sudah ada di transaksi lama tetap boleh disimpan walau kini diarsipkan.
+      if (menu.arsip && !menuArsipDiizinkan?.has(menu.id)) {
+        throw new Error(`Menu "${menu.nama}" sudah diarsipkan.`)
+      }
+      return { menuId: it.menuId, jumlah: it.jumlah }
+    })
+
+  if (itemBersih.length === 0) {
+    throw new Error('Tambahkan minimal satu menu dengan jumlah lebih dari 0.')
+  }
+
+  const kurang = periksaKetersediaan(itemBersih, menuMap, bahanMap, stokDasar)
+  if (kurang.length > 0) {
+    const detail = kurang
+      .map(
+        (k) =>
+          `${k.nama} (butuh ${formatAngka(k.dibutuhkan)} ${k.satuan}, tersedia ${formatAngka(k.tersedia)} ${k.satuan})`,
+      )
+      .join('; ')
+    throw new Error(`Stok tidak cukup: ${detail}.`)
+  }
+
+  const items: ItemPenjualan[] = itemBersih.map((it) => ({
+    menuId: it.menuId,
+    nama: menuMap.get(it.menuId)!.nama,
+    jumlah: it.jumlah,
+  }))
+
+  const kebutuhan = kebutuhanBahan(itemBersih, menuMap)
+  const mutasi: Mutasi[] = [...kebutuhan.entries()].map(
+    ([bahanId, jumlah]) => ({
+      id: uid('mut'),
+      bahanId,
+      tipe: 'keluar',
+      jumlah,
+      alasan: 'Penjualan',
+      keterangan: `Penjualan ${nomor}`,
+      tanggal: input.tanggal,
+      userId,
+      userName,
+      createdAt: new Date().toISOString(),
+      penjualanId,
+    }),
+  )
+
+  const tanpaResep = menuTanpaResep(itemBersih, menuMap)
+  const stokTerpotong = tanpaResep.length === 0
+
+  return { items, mutasi, stokTerpotong }
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { db: dbAuth, setDb, user, logout } = useAuth()
   const db = dbAuth as DB
@@ -91,6 +226,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const bahanMap = useMemo(
     () => new Map((db?.bahan ?? []).map((b) => [b.id, b])),
+    [db],
+  )
+
+  const menuMap = useMemo(
+    () => new Map((db?.menu ?? []).map((m) => [m.id, m])),
     [db],
   )
 
@@ -141,7 +281,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
               bahanId: bahanBaru.id,
               tipe: 'masuk',
               jumlah: stokAwal,
-              hargaSatuan: input.hargaAwal && input.hargaAwal > 0 ? input.hargaAwal : undefined,
               keterangan: input.keteranganAwal?.trim() || 'Stok awal',
               tanggal: sekarang,
               userId: user?.id ?? 'sistem',
@@ -236,9 +375,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (input: InputMutasi, abaikanMutasiId?: string) => {
       if (!input.bahanId) throw new Error('Pilih bahan terlebih dahulu.')
       if (!(input.jumlah > 0)) throw new Error('Jumlah harus lebih dari 0.')
-      if (input.hargaSatuan !== undefined && input.hargaSatuan < 0) {
-        throw new Error('Harga satuan tidak boleh negatif.')
-      }
       const bahan = db.bahan.find((b) => b.id === input.bahanId)
       if (!bahan) throw new Error('Bahan tidak ditemukan.')
 
@@ -273,10 +409,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         bahanId: input.bahanId,
         tipe: input.tipe,
         jumlah: input.jumlah,
-        hargaSatuan:
-          input.tipe === 'masuk' && input.hargaSatuan && input.hargaSatuan > 0
-            ? input.hargaSatuan
-            : undefined,
         alasan: input.alasan?.trim() || undefined,
         keterangan: input.keterangan?.trim() || undefined,
         tanggal: input.tanggal || sekarang,
@@ -308,6 +440,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (id: string, input: InputMutasi) => {
       const lama = db.mutasi.find((m) => m.id === id)
       if (!lama) throw new Error('Mutasi tidak ditemukan.')
+      if (lama.penjualanId) {
+        throw new Error('Mutasi ini berasal dari penjualan. Ubah melalui menu Penjualan.')
+      }
       const bahan = validasiMutasi(input, id)
 
       const log = buatLog(
@@ -326,10 +461,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
                   bahanId: input.bahanId,
                   tipe: input.tipe,
                   jumlah: input.jumlah,
-                  hargaSatuan:
-                    input.tipe === 'masuk' && input.hargaSatuan && input.hargaSatuan > 0
-                      ? input.hargaSatuan
-                      : undefined,
                   alasan: input.alasan?.trim() || undefined,
                   keterangan: input.keterangan?.trim() || undefined,
                   tanggal: input.tanggal || m.tanggal,
@@ -347,6 +478,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       const lama = db.mutasi.find((m) => m.id === id)
       if (!lama) return
+      if (lama.penjualanId) {
+        throw new Error('Mutasi ini berasal dari penjualan. Hapus melalui menu Penjualan.')
+      }
       const bahan = db.bahan.find((b) => b.id === lama.bahanId)
       const log = buatLog(
         'Hapus mutasi',
@@ -362,6 +496,233 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
     },
     [buatLog, db.bahan, db.mutasi, setDb],
+  )
+
+  const validasiMenu = useCallback(
+    (input: InputMenu, id?: string) => {
+      const nama = input.nama.trim()
+      if (!nama) throw new Error('Nama menu wajib diisi.')
+      if (!input.kategori.trim()) throw new Error('Kategori menu wajib dipilih.')
+      if (
+        db.menu.some(
+          (m) =>
+            m.id !== id &&
+            !m.arsip &&
+            m.nama.trim().toLowerCase() === nama.toLowerCase(),
+        )
+      ) {
+        throw new Error('Menu dengan nama tersebut sudah ada.')
+      }
+      return {
+        nama,
+        kategori: input.kategori.trim(),
+        deskripsi: input.deskripsi?.trim() || undefined,
+        resep: bersihkanResep(input.resep, bahanMap),
+        resepEstimasi: input.resepEstimasi,
+      }
+    },
+    [bahanMap, db.menu],
+  )
+
+  const tambahMenu = useCallback(
+    (input: InputMenu): Menu => {
+      const data = validasiMenu(input)
+      const menuBaru: Menu = {
+        id: uid('mnu'),
+        ...data,
+        arsip: false,
+        createdAt: new Date().toISOString(),
+      }
+      const log = buatLog(
+        'Tambah menu',
+        `Menambahkan menu "${menuBaru.nama}"${menuBaru.resep.length > 0 ? ` dengan ${menuBaru.resep.length} bahan resep` : ' tanpa resep'}`,
+      )
+      setDb((prev) =>
+        prev
+          ? {
+              ...prev,
+              menu: [...prev.menu, menuBaru],
+              log: [log, ...prev.log].slice(0, 250),
+            }
+          : prev,
+      )
+      return menuBaru
+    },
+    [buatLog, setDb, validasiMenu],
+  )
+
+  const ubahMenu = useCallback(
+    (id: string, input: InputMenu) => {
+      const lama = db.menu.find((m) => m.id === id)
+      if (!lama) throw new Error('Menu tidak ditemukan.')
+      const data = validasiMenu(input, id)
+      const log = buatLog('Ubah menu', `Memperbarui menu "${data.nama}"`)
+      setDb((prev) =>
+        prev
+          ? {
+              ...prev,
+              menu: prev.menu.map((m) => (m.id === id ? { ...m, ...data } : m)),
+              log: [log, ...prev.log].slice(0, 250),
+            }
+          : prev,
+      )
+    },
+    [buatLog, db.menu, setDb, validasiMenu],
+  )
+
+  const arsipMenu = useCallback(
+    (id: string, arsip: boolean) => {
+      const menu = db.menu.find((m) => m.id === id)
+      if (!menu) throw new Error('Menu tidak ditemukan.')
+      const log = buatLog(
+        arsip ? 'Arsipkan menu' : 'Aktifkan menu',
+        `${arsip ? 'Mengarsipkan' : 'Mengaktifkan'} menu "${menu.nama}"`,
+      )
+      setDb((prev) =>
+        prev
+          ? {
+              ...prev,
+              menu: prev.menu.map((m) => (m.id === id ? { ...m, arsip } : m)),
+              log: [log, ...prev.log].slice(0, 250),
+            }
+          : prev,
+      )
+    },
+    [buatLog, db.menu, setDb],
+  )
+
+  const catatPenjualan = useCallback(
+    (input: InputPenjualan): Penjualan => {
+      const tanggal = input.tanggal || new Date().toISOString()
+      const waktu = new Date(tanggal)
+      if (Number.isNaN(waktu.getTime())) throw new Error('Tanggal penjualan tidak valid.')
+
+      const id = uid('pj')
+      const nomor = buatNomorPenjualan(db.penjualan, waktu)
+      const hasil = siapkanPenjualan(
+        { ...input, tanggal: waktu.toISOString() },
+        db,
+        stok,
+        id,
+        nomor,
+        user?.id ?? 'sistem',
+        user?.nama ?? 'Sistem',
+      )
+
+      const penjualan: Penjualan = {
+        id,
+        nomor,
+        tanggal: waktu.toISOString(),
+        items: hasil.items,
+        catatan: input.catatan?.trim() || undefined,
+        stokTerpotong: hasil.stokTerpotong,
+        userId: user?.id ?? 'sistem',
+        userName: user?.nama ?? 'Sistem',
+        createdAt: new Date().toISOString(),
+      }
+
+      const totalQty = hasil.items.reduce((t, it) => t + it.jumlah, 0)
+      const log = buatLog(
+        'Catat penjualan',
+        `${nomor} · ${hasil.items.length} menu · ${formatAngka(totalQty)} item${hasil.stokTerpotong ? '' : ' (sebagian stok tidak terpotong)'}`,
+      )
+
+      setDb((prev) =>
+        prev
+          ? {
+              ...prev,
+              penjualan: [...prev.penjualan, penjualan],
+              mutasi: [...prev.mutasi, ...hasil.mutasi],
+              log: [log, ...prev.log].slice(0, 250),
+            }
+          : prev,
+      )
+
+      return penjualan
+    },
+    [buatLog, db, setDb, stok, user],
+  )
+
+  const ubahPenjualan = useCallback(
+    (id: string, input: InputPenjualan) => {
+      if (user?.role !== 'admin') {
+        throw new Error('Hanya admin yang dapat mengubah penjualan.')
+      }
+      const lama = db.penjualan.find((p) => p.id === id)
+      if (!lama) throw new Error('Penjualan tidak ditemukan.')
+
+      const tanggal = input.tanggal || lama.tanggal
+      const waktu = new Date(tanggal)
+      if (Number.isNaN(waktu.getTime())) throw new Error('Tanggal penjualan tidak valid.')
+
+      const stokDasar = hitungStok(
+        db.bahan,
+        db.mutasi.filter((m) => m.penjualanId !== id),
+      )
+      const hasil = siapkanPenjualan(
+        { ...input, tanggal: waktu.toISOString() },
+        db,
+        stokDasar,
+        id,
+        lama.nomor,
+        lama.userId,
+        lama.userName,
+        new Set(lama.items.map((it) => it.menuId)),
+      )
+
+      const penjualan: Penjualan = {
+        ...lama,
+        tanggal: waktu.toISOString(),
+        items: hasil.items,
+        catatan: input.catatan?.trim() || undefined,
+        stokTerpotong: hasil.stokTerpotong,
+      }
+
+      const log = buatLog(
+        'Ubah penjualan',
+        `Memperbarui ${lama.nomor} · ${hasil.items.length} menu`,
+      )
+
+      setDb((prev) =>
+        prev
+          ? {
+              ...prev,
+              penjualan: prev.penjualan.map((p) => (p.id === id ? penjualan : p)),
+              mutasi: [
+                ...prev.mutasi.filter((m) => m.penjualanId !== id),
+                ...hasil.mutasi,
+              ],
+              log: [log, ...prev.log].slice(0, 250),
+            }
+          : prev,
+      )
+    },
+    [buatLog, db, setDb, user],
+  )
+
+  const hapusPenjualan = useCallback(
+    (id: string) => {
+      if (user?.role !== 'admin') {
+        throw new Error('Hanya admin yang dapat menghapus penjualan.')
+      }
+      const lama = db.penjualan.find((p) => p.id === id)
+      if (!lama) return
+      const log = buatLog(
+        'Hapus penjualan',
+        `Menghapus ${lama.nomor} dan mengembalikan stok bahan terkait`,
+      )
+      setDb((prev) =>
+        prev
+          ? {
+              ...prev,
+              penjualan: prev.penjualan.filter((p) => p.id !== id),
+              mutasi: prev.mutasi.filter((m) => m.penjualanId !== id),
+              log: [log, ...prev.log].slice(0, 250),
+            }
+          : prev,
+      )
+    },
+    [buatLog, db.penjualan, setDb, user],
   )
 
   const tambahUser = useCallback(
@@ -563,7 +924,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         throw new Error('File backup tidak valid.')
       }
 
-      const users = data.users.filter(
+      const bersih = normalisasiDB(data)
+      const users = bersih.users.filter(
         (u) => u && u.id && u.username && u.salt && u.passwordHash,
       )
       if (users.length === 0) throw new Error('Backup tidak memiliki akun yang valid.')
@@ -571,31 +933,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         throw new Error('Backup tidak memiliki akun aktif.')
       }
 
-      const bersih: DB = {
-        version: data.version ?? 1,
-        users,
-        bahan: data.bahan.filter((b) => b && b.id && b.nama),
-        mutasi: Array.isArray(data.mutasi)
-          ? data.mutasi.filter((m) => m && m.id && m.bahanId)
-          : [],
-        menu: Array.isArray(data.menu) ? data.menu : [],
-        penjualan: Array.isArray(data.penjualan) ? data.penjualan : [],
-        pengaturan: {
-          ...PENGATURAN_RESMI,
-          ...data.pengaturan,
-          kategoriBahan: Array.isArray(data.pengaturan?.kategoriBahan)
-            ? data.pengaturan.kategoriBahan
-            : KATEGORI_BAWAAN,
-          satuanBahan: Array.isArray(data.pengaturan?.satuanBahan)
-            ? data.pengaturan.satuanBahan
-            : SATUAN_BAWAAN,
-        },
-        log: Array.isArray(data.log) ? data.log : [],
-      }
-
+      const hasil: DB = { ...bersih, users }
       const operatorId = user?.id
-      setDb(bersih)
-      if (operatorId && !bersih.users.some((u) => u.id === operatorId)) {
+      setDb(hasil)
+      if (operatorId && !hasil.users.some((u) => u.id === operatorId)) {
         logout()
       }
     },
@@ -606,7 +947,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const seed = await buatDatabaseAwal()
     const log = buatLog(
       'Reset data',
-      'Mengembalikan data bahan & mutasi ke contoh awal',
+      'Mengembalikan bahan, menu, penjualan, dan mutasi ke contoh awal',
     )
     setDb((prev) =>
       prev
@@ -614,6 +955,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ...prev,
             bahan: seed.bahan,
             mutasi: seed.mutasi,
+            menu: seed.menu,
+            penjualan: seed.penjualan,
             log: [log, ...prev.log].slice(0, 250),
           }
         : prev,
@@ -637,12 +980,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       db,
       stok,
       bahanMap,
+      menuMap,
       tambahBahan,
       ubahBahan,
       arsipBahan,
       tambahMutasi,
       ubahMutasi,
       hapusMutasi,
+      tambahMenu,
+      ubahMenu,
+      arsipMenu,
+      catatPenjualan,
+      ubahPenjualan,
+      hapusPenjualan,
       tambahUser,
       ubahUser,
       resetPassword,
@@ -659,12 +1009,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       db,
       stok,
       bahanMap,
+      menuMap,
       tambahBahan,
       ubahBahan,
       arsipBahan,
       tambahMutasi,
       ubahMutasi,
       hapusMutasi,
+      tambahMenu,
+      ubahMenu,
+      arsipMenu,
+      catatPenjualan,
+      ubahPenjualan,
+      hapusPenjualan,
       tambahUser,
       ubahUser,
       resetPassword,

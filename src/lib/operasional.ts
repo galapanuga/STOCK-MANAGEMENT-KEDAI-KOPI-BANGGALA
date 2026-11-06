@@ -1,24 +1,4 @@
-import type { HariKey, JamHari, JamOperasional } from '../types'
-
-export const HARI_DAFTAR: { key: HariKey; label: string; urutan: number }[] = [
-  { key: 'senin', label: 'Senin', urutan: 1 },
-  { key: 'selasa', label: 'Selasa', urutan: 2 },
-  { key: 'rabu', label: 'Rabu', urutan: 3 },
-  { key: 'kamis', label: 'Kamis', urutan: 4 },
-  { key: 'jumat', label: 'Jumat', urutan: 5 },
-  { key: 'sabtu', label: 'Sabtu', urutan: 6 },
-  { key: 'minggu', label: 'Minggu', urutan: 0 },
-]
-
-export const HARI_LABEL: Record<HariKey, string> = {
-  senin: 'Senin',
-  selasa: 'Selasa',
-  rabu: 'Rabu',
-  kamis: 'Kamis',
-  jumat: 'Jumat',
-  sabtu: 'Sabtu',
-  minggu: 'Minggu',
-}
+import type { HariKey, JamOperasional, StatusBuka } from '../types'
 
 export const JAM_OPERASIONAL_RESMI: JamOperasional = {
   senin: { buka: true, mulai: '09:00', selesai: '23:59' },
@@ -30,178 +10,171 @@ export const JAM_OPERASIONAL_RESMI: JamOperasional = {
   minggu: { buka: true, mulai: '09:00', selesai: '23:59' },
 }
 
-export interface WaktuWIB {
-  hari: HariKey
-  hariNama: string
-  menitHariIni: number
-  jam: number
-  menit: number
-  teksWaktu: string
-}
-
-const URUTAN_HARI_JS: HariKey[] = [
-  'minggu',
+export const URUTAN_HARI: HariKey[] = [
   'senin',
   'selasa',
   'rabu',
   'kamis',
   'jumat',
   'sabtu',
+  'minggu',
 ]
 
+const NAMA_HARI: Record<HariKey, string> = {
+  senin: 'Senin',
+  selasa: 'Selasa',
+  rabu: 'Rabu',
+  kamis: 'Kamis',
+  jumat: 'Jumat',
+  sabtu: 'Sabtu',
+  minggu: 'Minggu',
+}
+
+const HARI_DARI_INDEKS: Record<number, HariKey> = {
+  0: 'minggu',
+  1: 'senin',
+  2: 'selasa',
+  3: 'rabu',
+  4: 'kamis',
+  5: 'jumat',
+  6: 'sabtu',
+}
+
+const INDEKS_DARI_HARI: Record<HariKey, number> = {
+  minggu: 0,
+  senin: 1,
+  selasa: 2,
+  rabu: 3,
+  kamis: 4,
+  jumat: 5,
+  sabtu: 6,
+}
+
+const PEMBAGI_WAKTU = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Jakarta',
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+interface WaktuJakarta {
+  hari: HariKey
+  /** Menit sejak 00.00 waktu Jakarta. */
+  menit: number
+}
+
+function waktuJakarta(now: Date): WaktuJakarta {
+  const bagian = PEMBAGI_WAKTU.formatToParts(now)
+  const ambil = (tipe: string) =>
+    bagian.find((b) => b.type === tipe)?.value ?? ''
+
+  const petaHari: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  }
+  const indeks = petaHari[ambil('weekday')] ?? now.getDay()
+  const jam = Number(ambil('hour')) % 24
+  const menit = Number(ambil('minute'))
+  return {
+    hari: HARI_DARI_INDEKS[indeks],
+    menit: jam * 60 + menit,
+  }
+}
+
+function keMenit(jam: string): number {
+  const [h, m] = jam.split(':').map(Number)
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
+}
+
+export function formatJam(jam: string): string {
+  return jam.replace(':', '.')
+}
+
+function rentangHari(jam: { mulai: string; selesai: string }): {
+  mulai: number
+  selesai: number
+} {
+  const mulai = keMenit(jam.mulai)
+  let selesai = keMenit(jam.selesai)
+  // Dukung jam operasional yang melewati tengah malam.
+  if (selesai <= mulai) selesai += 24 * 60
+  return { mulai, selesai }
+}
+
+function deskripsiSisa(menit: number): string {
+  const jam = Math.floor(menit / 60)
+  const sisa = menit % 60
+  if (jam > 0) return `${jam} jam ${sisa} menit`
+  return `${sisa} menit`
+}
+
+function hariBerikutnya(
+  jamOperasional: JamOperasional,
+  hari: HariKey,
+  langkah = 1,
+): HariKey {
+  const indeks = (INDEKS_DARI_HARI[hari] + langkah) % 7
+  return HARI_DARI_INDEKS[indeks]
+}
+
 /**
- * Mendapatkan komponen waktu saat ini di zona Asia/Jakarta (WIB).
+ * Status buka/tutup dihitung memakai zona waktu Asia/Jakarta (WIB),
+ * tidak bergantung pada zona waktu perangkat.
  */
-export function ambilWaktuWIB(referensi: Date = new Date()): WaktuWIB {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Jakarta',
-    weekday: 'short',
-    hour: 'numeric',
-    minute: 'numeric',
-    hourCycle: 'h23',
-  })
+export function statusBukaSekarang(
+  jamOperasional: JamOperasional,
+  now: Date = new Date(),
+): StatusBuka {
+  const { hari, menit } = waktuJakarta(now)
+  const jadwal = jamOperasional[hari]
 
-  const bagian = formatter.formatToParts(referensi)
-  let weekdayStr = ''
-  let jam = 0
-  let menit = 0
-
-  for (const b of bagian) {
-    if (b.type === 'weekday') weekdayStr = b.value.toLowerCase()
-    else if (b.type === 'hour') jam = Number(b.value) || 0
-    else if (b.type === 'minute') menit = Number(b.value) || 0
-  }
-
-  const petaWeekday: Record<string, HariKey> = {
-    sun: 'minggu',
-    mon: 'senin',
-    tue: 'selasa',
-    wed: 'rabu',
-    thu: 'kamis',
-    fri: 'jumat',
-    sat: 'sabtu',
-  }
-
-  const hari: HariKey = petaWeekday[weekdayStr] ?? 'senin'
-  const menitHariIni = jam * 60 + menit
-  const teksWaktu = `${String(jam).padStart(2, '0')}.${String(menit).padStart(2, '0')} WIB`
-
-  return {
-    hari,
-    hariNama: HARI_LABEL[hari],
-    menitHariIni,
-    jam,
-    menit,
-    teksWaktu,
-  }
-}
-
-function menitDariHHMM(hhmm: string): number {
-  const [h, m] = (hhmm || '00:00').split(':').map((x) => Number(x) || 0)
-  return h * 60 + m
-}
-
-function formatHHMM(hhmm: string): string {
-  const [h, m] = (hhmm || '00:00').split(':')
-  return `${(h ?? '00').padStart(2, '0')}.${(m ?? '00').padStart(2, '0')}`
-}
-
-export type TipeStatusOperasional = 'buka' | 'tutup' | 'libur'
-
-export interface StatusOperasional {
-  status: TipeStatusOperasional
-  buka: boolean
-  labelSingkat: string
-  labelLengkap: string
-  detail: string
-  hariIni: JamHari
-  waktuWIB: WaktuWIB
-}
-
-export function hitungStatusOperasional(
-  jadwal: JamOperasional = JAM_OPERASIONAL_RESMI,
-  referensi: Date = new Date(),
-): StatusOperasional {
-  const wib = ambilWaktuWIB(referensi)
-  const hariIni = jadwal[wib.hari] ?? {
-    buka: false,
-    mulai: '09:00',
-    selesai: '23:59',
-  }
-
-  const mulai = menitDariHHMM(hariIni.mulai)
-  const selesai = menitDariHHMM(hariIni.selesai)
-
-  // Kasus hari libur
-  if (!hariIni.buka) {
-    const hariBerikutnya = cariHariBukaBerikutnya(jadwal, wib.hari)
-    const labelLibur = wib.hari === 'jumat' ? 'Jumat libur' : 'Hari libur'
-    return {
-      status: 'libur',
-      buka: false,
-      labelSingkat: labelLibur,
-      labelLengkap: `${labelLibur} · Persiapan kedai`,
-      detail: hariBerikutnya
-        ? `Buka ${hariBerikutnya.label} ${formatHHMM(hariBerikutnya.mulai)} WIB`
-        : 'Sedang tutup',
-      hariIni,
-      waktuWIB: wib,
+  if (jadwal?.buka) {
+    const { mulai, selesai } = rentangHari(jadwal)
+    if (menit >= mulai && menit < selesai) {
+      return {
+        buka: true,
+        keterangan: `Tutup dalam ${deskripsiSisa(selesai - menit)}`,
+      }
+    }
+    if (menit < mulai) {
+      return {
+        buka: false,
+        keterangan: `Buka hari ini ${formatJam(jadwal.mulai)} WIB`,
+      }
     }
   }
 
-  // Hari buka biasa
-  if (wib.menitHariIni >= mulai && wib.menitHariIni <= selesai) {
-    return {
-      status: 'buka',
-      buka: true,
-      labelSingkat: 'Buka sekarang',
-      labelLengkap: 'Buka sekarang',
-      detail: `Tutup pukul ${formatHHMM(hariIni.selesai)} WIB`,
-      hariIni,
-      waktuWIB: wib,
-    }
-  }
-
-  if (wib.menitHariIni < mulai) {
-    return {
-      status: 'tutup',
-      buka: false,
-      labelSingkat: 'Belum buka',
-      labelLengkap: 'Tutup · Buka nanti',
-      detail: `Buka hari ini pukul ${formatHHMM(hariIni.mulai)} WIB`,
-      hariIni,
-      waktuWIB: wib,
-    }
-  }
-
-  // Lewat jam tutup
-  const hariBerikutnya = cariHariBukaBerikutnya(jadwal, wib.hari)
-  return {
-    status: 'tutup',
-    buka: false,
-    labelSingkat: 'Tutup',
-    labelLengkap: 'Tutup untuk hari ini',
-    detail: hariBerikutnya
-      ? `Buka ${hariBerikutnya.label} pukul ${formatHHMM(hariBerikutnya.mulai)} WIB`
-      : 'Tutup',
-    hariIni,
-    waktuWIB: wib,
-  }
-}
-
-function cariHariBukaBerikutnya(
-  jadwal: JamOperasional,
-  hariSaatIni: HariKey,
-): { key: HariKey; label: string; mulai: string } | null {
-  const indexSaatIni = URUTAN_HARI_JS.indexOf(hariSaatIni)
   for (let i = 1; i <= 7; i++) {
-    const idx = (indexSaatIni + i) % 7
-    const key = URUTAN_HARI_JS[idx]
-    const j = jadwal[key]
-    if (j?.buka) {
-      const label = i === 1 ? 'besok' : HARI_LABEL[key]
-      return { key, label, mulai: j.mulai }
+    const berikut = hariBerikutnya(jamOperasional, hari, i)
+    const jadwalBerikut = jamOperasional[berikut]
+    if (!jadwalBerikut?.buka) continue
+    const label = i === 1 ? 'besok' : NAMA_HARI[berikut]
+    return {
+      buka: false,
+      keterangan: `Tutup · buka ${label} ${formatJam(jadwalBerikut.mulai)} WIB`,
     }
   }
-  return null
+
+  return { buka: false, keterangan: 'Tutup' }
 }
+
+export function formatJamHari(jam: {
+  buka: boolean
+  mulai: string
+  selesai: string
+}): string {
+  if (!jam.buka) return 'Libur'
+  return `${formatJam(jam.mulai)} – ${formatJam(jam.selesai)} WIB`
+}
+
+export function namaHariIndo(hari: HariKey): string {
+  return NAMA_HARI[hari] ?? hari
+}
+
+export { NAMA_HARI }

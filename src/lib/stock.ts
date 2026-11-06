@@ -1,4 +1,4 @@
-import type { Bahan, Mutasi, StokInfo } from '../types'
+import type { Bahan, Mutasi, Penjualan, StokInfo } from '../types'
 
 const bulatkan = (n: number) => Math.round(n * 1000) / 1000
 
@@ -11,14 +11,9 @@ export function hitungStok(bahan: Bahan[], mutasi: Mutasi[]): Map<string, StokIn
       stok: 0,
       totalMasuk: 0,
       totalKeluar: 0,
-      hargaRataRata: 0,
-      nilai: 0,
       status: b.stokMin > 0 ? 'habis' : 'aman',
     })
   }
-
-  const nilaiMasuk = new Map<string, number>()
-  const qtyMasukBerharga = new Map<string, number>()
 
   for (const m of mutasi) {
     const info = peta.get(m.bahanId)
@@ -27,16 +22,6 @@ export function hitungStok(bahan: Bahan[], mutasi: Mutasi[]): Map<string, StokIn
     if (m.tipe === 'masuk') {
       info.stok += m.jumlah
       info.totalMasuk += m.jumlah
-      if (m.hargaSatuan && m.hargaSatuan > 0) {
-        nilaiMasuk.set(
-          m.bahanId,
-          (nilaiMasuk.get(m.bahanId) ?? 0) + m.jumlah * m.hargaSatuan,
-        )
-        qtyMasukBerharga.set(
-          m.bahanId,
-          (qtyMasukBerharga.get(m.bahanId) ?? 0) + m.jumlah,
-        )
-      }
     } else {
       info.stok -= m.jumlah
       info.totalKeluar += m.jumlah
@@ -45,12 +30,9 @@ export function hitungStok(bahan: Bahan[], mutasi: Mutasi[]): Map<string, StokIn
 
   for (const b of bahan) {
     const info = peta.get(b.id)!
-    const qty = qtyMasukBerharga.get(b.id) ?? 0
-    info.hargaRataRata = qty > 0 ? (nilaiMasuk.get(b.id) ?? 0) / qty : 0
     info.stok = bulatkan(info.stok)
     info.totalMasuk = bulatkan(info.totalMasuk)
     info.totalKeluar = bulatkan(info.totalKeluar)
-    info.nilai = Math.max(0, info.stok) * info.hargaRataRata
     info.status = info.stok <= 0 ? 'habis' : info.stok <= b.stokMin ? 'menipis' : 'aman'
   }
 
@@ -63,9 +45,6 @@ export interface BarisLaporan {
   masuk: number
   keluar: number
   stokAkhir: number
-  hargaRataRata: number
-  nilaiMasuk: number
-  nilaiKeluar: number
 }
 
 /**
@@ -77,12 +56,10 @@ export function ringkasanPeriode(
   mutasi: Mutasi[],
   mulai: Date,
   selesai: Date,
-  semuaStok: Map<string, StokInfo>,
 ): BarisLaporan[] {
   const awal = new Map<string, number>()
   const masuk = new Map<string, number>()
   const keluar = new Map<string, number>()
-  const nilaiMasuk = new Map<string, number>()
 
   for (const m of mutasi) {
     const t = new Date(m.tanggal).getTime()
@@ -96,12 +73,6 @@ export function ringkasanPeriode(
     } else if (t <= selesai.getTime()) {
       if (m.tipe === 'masuk') {
         masuk.set(m.bahanId, (masuk.get(m.bahanId) ?? 0) + m.jumlah)
-        if (m.hargaSatuan && m.hargaSatuan > 0) {
-          nilaiMasuk.set(
-            m.bahanId,
-            (nilaiMasuk.get(m.bahanId) ?? 0) + m.jumlah * m.hargaSatuan,
-          )
-        }
       } else {
         keluar.set(m.bahanId, (keluar.get(m.bahanId) ?? 0) + m.jumlah)
       }
@@ -109,12 +80,9 @@ export function ringkasanPeriode(
   }
 
   return bahan.map((b) => {
-    const info = semuaStok.get(b.id)
     const stokAwal = bulatkan(awal.get(b.id) ?? 0)
     const jumlahMasuk = bulatkan(masuk.get(b.id) ?? 0)
     const jumlahKeluar = bulatkan(keluar.get(b.id) ?? 0)
-    const harga = info?.hargaRataRata ?? 0
-    const totalNilaiMasuk = nilaiMasuk.get(b.id)
 
     return {
       bahan: b,
@@ -122,19 +90,38 @@ export function ringkasanPeriode(
       masuk: jumlahMasuk,
       keluar: jumlahKeluar,
       stokAkhir: bulatkan(stokAwal + jumlahMasuk - jumlahKeluar),
-      hargaRataRata: harga,
-      nilaiMasuk:
-        totalNilaiMasuk !== undefined ? totalNilaiMasuk : jumlahMasuk * harga,
-      nilaiKeluar: jumlahKeluar * harga,
     }
   })
 }
 
-/** Nilai pemakaian (keluar) per hari selama `jumlahHari` terakhir, dalam rupiah. */
-export function pemakaianHarian(
+/** Jumlah aktivitas mutasi per hari selama `jumlahHari` terakhir. */
+export function aktivitasHarian(
   mutasi: Mutasi[],
-  stok: Map<string, StokInfo>,
   jumlahHari = 7,
+): { label: string; tanggal: Date; total: number }[] {
+  return hitungHarian(
+    mutasi.map((m) => m.tanggal),
+    jumlahHari,
+  )
+}
+
+/** Jumlah item terjual per hari selama `jumlahHari` terakhir. */
+export function penjualanHarian(
+  penjualan: Penjualan[],
+  jumlahHari = 7,
+): { label: string; tanggal: Date; total: number }[] {
+  return hitungHarian(
+    penjualan.map((p) => ({
+      tanggal: p.tanggal,
+      bobot: p.items.reduce((total, item) => total + item.jumlah, 0),
+    })),
+    jumlahHari,
+  )
+}
+
+function hitungHarian(
+  data: (string | { tanggal: string; bobot: number })[],
+  jumlahHari: number,
 ): { label: string; tanggal: Date; total: number }[] {
   const hasil: { label: string; tanggal: Date; total: number }[] = []
   const hariIni = new Date()
@@ -151,15 +138,14 @@ export function pemakaianHarian(
   }
 
   const peta = new Map(hasil.map((h) => [h.tanggal.getTime(), h]))
-  for (const m of mutasi) {
-    if (m.tipe !== 'keluar') continue
-    const d = new Date(m.tanggal)
+  for (const item of data) {
+    const teks = typeof item === 'string' ? item : item.tanggal
+    const bobot = typeof item === 'string' ? 1 : item.bobot
+    const d = new Date(teks)
     if (Number.isNaN(d.getTime())) continue
     d.setHours(0, 0, 0, 0)
     const baris = peta.get(d.getTime())
-    if (baris) {
-      baris.total += m.jumlah * (stok.get(m.bahanId)?.hargaRataRata ?? 0)
-    }
+    if (baris) baris.total += bobot
   }
 
   return hasil

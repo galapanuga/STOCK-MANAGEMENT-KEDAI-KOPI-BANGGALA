@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
-import type { DB } from '../types'
+import type { DB, HariKey, JamOperasional } from '../types'
 import {
   IconCalendar,
   IconDownload,
@@ -22,6 +22,7 @@ import {
   formatTanggalWaktu,
   keTanggalInput,
 } from '../lib/format'
+import { namaHariIndo, URUTAN_HARI } from '../lib/operasional'
 
 export function PengaturanPage() {
   const { user, gantiPassword } = useAuth()
@@ -37,9 +38,21 @@ export function PengaturanPage() {
   } = useData()
   const toast = useToast()
 
-  const [namaKedai, setNamaKedai] = useState(db.pengaturan.namaKedai)
-  const [alamat, setAlamat] = useState(db.pengaturan.alamat)
-  const [telepon, setTelepon] = useState(db.pengaturan.telepon)
+  const [identitas, setIdentitas] = useState({
+    namaKedai: db.pengaturan.namaKedai,
+    tagline: db.pengaturan.tagline,
+    alamat: db.pengaturan.alamat,
+    kota: db.pengaturan.kota,
+    tanggalBerdiri: db.pengaturan.tanggalBerdiri,
+    halalId: db.pengaturan.halalId,
+    instagram: db.pengaturan.instagram,
+    tiktok: db.pengaturan.tiktok,
+    situsUrl: db.pengaturan.situsUrl,
+    mapsUrl: db.pengaturan.mapsUrl,
+    gofoodUrl: db.pengaturan.gofoodUrl,
+    grabfoodUrl: db.pengaturan.grabfoodUrl,
+  })
+  const [jam, setJam] = useState<JamOperasional>(db.pengaturan.jamOperasional)
 
   const [passwordLama, setPasswordLama] = useState('')
   const [passwordBaru, setPasswordBaru] = useState('')
@@ -60,18 +73,40 @@ export function PengaturanPage() {
     }
   }, [db])
 
+  const ubahIdentitas = (kunci: keyof typeof identitas, nilai: string) => {
+    setIdentitas((lama) => ({ ...lama, [kunci]: nilai }))
+  }
+
   const simpanIdentitas = (e: FormEvent) => {
     e.preventDefault()
-    if (!namaKedai.trim()) {
+    if (!identitas.namaKedai.trim()) {
       toast.error('Nama kedai wajib diisi.')
       return
     }
     simpanPengaturan({
-      namaKedai: namaKedai.trim(),
-      alamat: alamat.trim(),
-      telepon: telepon.trim(),
+      ...identitas,
+      namaKedai: identitas.namaKedai.trim(),
+      tagline: identitas.tagline.trim(),
+      alamat: identitas.alamat.trim(),
+      kota: identitas.kota.trim(),
+      halalId: identitas.halalId.trim(),
+      instagram: identitas.instagram.trim(),
+      tiktok: identitas.tiktok.trim(),
+      situsUrl: identitas.situsUrl.trim(),
+      mapsUrl: identitas.mapsUrl.trim(),
+      gofoodUrl: identitas.gofoodUrl.trim(),
+      grabfoodUrl: identitas.grabfoodUrl.trim(),
     })
     toast.sukses('Identitas kedai berhasil disimpan.')
+  }
+
+  const ubahJam = (hari: HariKey, patch: Partial<JamOperasional[HariKey]>) => {
+    setJam((lama) => ({ ...lama, [hari]: { ...lama[hari], ...patch } }))
+  }
+
+  const simpanJam = () => {
+    simpanPengaturan({ jamOperasional: jam })
+    toast.sukses('Jam operasional berhasil disimpan.')
   }
 
   const simpanPassword = async (e: FormEvent) => {
@@ -155,7 +190,7 @@ export function PengaturanPage() {
     setMemprosesReset(true)
     try {
       await resetStok()
-      toast.sukses('Data bahan & mutasi berhasil direset ke contoh awal.')
+      toast.sukses('Data bahan, menu, dan penjualan berhasil direset ke contoh awal.')
       setKonfirmasiReset(false)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal mereset data.')
@@ -168,49 +203,182 @@ export function PengaturanPage() {
     <div className="animate-rise">
       <PageHeader
         judul="Pengaturan"
-        deskripsi="Atur identitas kedai, master data, keamanan akun, dan cadangan data."
+        deskripsi="Atur identitas kedai, jam operasional, master data, keamanan akun, dan cadangan data."
       />
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="card">
+        <section className="card xl:col-span-2">
           <SectionHeader
             judul="Identitas Kedai"
-            deskripsi="Tampil di dashboard, halaman login, dan laporan cetak."
+            deskripsi="Dipakai di dashboard, halaman login, dan laporan cetak. Tanpa nomor telepon."
           />
-          <form onSubmit={simpanIdentitas} className="space-y-4 p-5">
+          <form onSubmit={simpanIdentitas} className="grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Nama Kedai" htmlFor="set-nama">
               <input
                 id="set-nama"
                 className="input"
-                value={namaKedai}
-                onChange={(e) => setNamaKedai(e.target.value)}
+                value={identitas.namaKedai}
+                onChange={(e) => ubahIdentitas('namaKedai', e.target.value)}
               />
             </Field>
-            <Field label="Alamat" htmlFor="set-alamat">
+            <Field label="Tagline" htmlFor="set-tagline">
+              <input
+                id="set-tagline"
+                className="input"
+                value={identitas.tagline}
+                onChange={(e) => ubahIdentitas('tagline', e.target.value)}
+              />
+            </Field>
+            <Field label="Alamat" htmlFor="set-alamat" className="sm:col-span-2">
               <textarea
                 id="set-alamat"
                 rows={2}
                 className="input resize-none"
-                value={alamat}
-                onChange={(e) => setAlamat(e.target.value)}
-                placeholder="Alamat kedai"
+                value={identitas.alamat}
+                onChange={(e) => ubahIdentitas('alamat', e.target.value)}
               />
             </Field>
-            <Field label="Telepon" htmlFor="set-telepon">
+            <Field label="Kota" htmlFor="set-kota">
               <input
-                id="set-telepon"
+                id="set-kota"
                 className="input"
-                value={telepon}
-                onChange={(e) => setTelepon(e.target.value)}
-                placeholder="08xx-xxxx-xxxx"
+                value={identitas.kota}
+                onChange={(e) => ubahIdentitas('kota', e.target.value)}
               />
             </Field>
-            <div className="flex justify-end">
+            <Field label="Tanggal Berdiri" htmlFor="set-berdiri">
+              <input
+                id="set-berdiri"
+                type="date"
+                className="input"
+                value={identitas.tanggalBerdiri}
+                onChange={(e) => ubahIdentitas('tanggalBerdiri', e.target.value)}
+              />
+            </Field>
+            <Field label="ID Halal" htmlFor="set-halal">
+              <input
+                id="set-halal"
+                className="input"
+                value={identitas.halalId}
+                onChange={(e) => ubahIdentitas('halalId', e.target.value)}
+              />
+            </Field>
+            <Field label="Instagram" htmlFor="set-ig">
+              <input
+                id="set-ig"
+                className="input"
+                value={identitas.instagram}
+                onChange={(e) => ubahIdentitas('instagram', e.target.value)}
+                placeholder="kedaikopibanggala"
+              />
+            </Field>
+            <Field label="TikTok" htmlFor="set-tiktok">
+              <input
+                id="set-tiktok"
+                className="input"
+                value={identitas.tiktok}
+                onChange={(e) => ubahIdentitas('tiktok', e.target.value)}
+                placeholder="kopibanggala"
+              />
+            </Field>
+            <Field label="Situs Profil" htmlFor="set-situs">
+              <input
+                id="set-situs"
+                className="input"
+                value={identitas.situsUrl}
+                onChange={(e) => ubahIdentitas('situsUrl', e.target.value)}
+              />
+            </Field>
+            <Field label="Google Maps" htmlFor="set-maps">
+              <input
+                id="set-maps"
+                className="input"
+                value={identitas.mapsUrl}
+                onChange={(e) => ubahIdentitas('mapsUrl', e.target.value)}
+              />
+            </Field>
+            <Field label="GoFood" htmlFor="set-gofood">
+              <input
+                id="set-gofood"
+                className="input"
+                value={identitas.gofoodUrl}
+                onChange={(e) => ubahIdentitas('gofoodUrl', e.target.value)}
+              />
+            </Field>
+            <Field label="GrabFood" htmlFor="set-grab">
+              <input
+                id="set-grab"
+                className="input"
+                value={identitas.grabfoodUrl}
+                onChange={(e) => ubahIdentitas('grabfoodUrl', e.target.value)}
+              />
+            </Field>
+            <div className="flex justify-end sm:col-span-2">
               <button type="submit" className="btn btn-primary">
                 Simpan identitas
               </button>
             </div>
           </form>
+        </section>
+
+        <section className="card xl:col-span-2">
+          <SectionHeader
+            judul="Jam Operasional"
+            deskripsi="Status buka/tutup dihitung memakai waktu Asia/Jakarta (WIB)."
+            aksi={
+              <button className="btn btn-primary btn-sm" onClick={simpanJam}>
+                Simpan jam
+              </button>
+            }
+          />
+          <div className="grid gap-2 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            {URUTAN_HARI.map((hari) => {
+              const jadwal = jam[hari]
+              return (
+                <div
+                  key={hari}
+                  className={`rounded-xl border p-3 transition-colors ${
+                    jadwal.buka ? 'border-line bg-white' : 'border-line bg-sand/50'
+                  }`}
+                >
+                  <label className="flex cursor-pointer items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-ink">
+                      {namaHariIndo(hari)}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={jadwal.buka}
+                      onChange={(e) => ubahJam(hari, { buka: e.target.checked })}
+                      className="size-3.5 accent-espresso"
+                      aria-label={`Buka hari ${namaHariIndo(hari)}`}
+                    />
+                  </label>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <input
+                      type="time"
+                      className="input px-2 py-1.5 text-xs"
+                      value={jadwal.mulai}
+                      onChange={(e) => ubahJam(hari, { mulai: e.target.value })}
+                      disabled={!jadwal.buka}
+                      aria-label={`Jam buka ${namaHariIndo(hari)}`}
+                    />
+                    <span className="text-[10px] text-muted">–</span>
+                    <input
+                      type="time"
+                      className="input px-2 py-1.5 text-xs"
+                      value={jadwal.selesai}
+                      onChange={(e) => ubahJam(hari, { selesai: e.target.value })}
+                      disabled={!jadwal.buka}
+                      aria-label={`Jam tutup ${namaHariIndo(hari)}`}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-muted">
+                    {jadwal.buka ? 'Buka' : 'Libur'}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
         </section>
 
         <section className="card">
@@ -319,7 +487,7 @@ export function PengaturanPage() {
           </form>
         </section>
 
-        <section className="card">
+        <section className="card xl:col-span-2">
           <SectionHeader
             judul="Data & Backup"
             deskripsi="Seluruh data tersimpan di browser perangkat ini."
@@ -327,8 +495,8 @@ export function PengaturanPage() {
           <div className="space-y-4 p-5">
             <div className="flex items-center justify-between gap-3 rounded-xl bg-cream px-4 py-3 text-xs">
               <span className="text-muted">
-                {db.users.length} akun · {db.bahan.length} bahan ·{' '}
-                {db.mutasi.length} mutasi
+                {db.users.length} akun · {db.bahan.length} bahan · {db.menu.length} menu ·{' '}
+                {db.penjualan.length} penjualan · {db.mutasi.length} mutasi
               </span>
               <span className="font-semibold whitespace-nowrap text-coffee">
                 ± {(ukuranData / 1024).toFixed(1)} KB
@@ -362,16 +530,16 @@ export function PengaturanPage() {
                 Zona berbahaya
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-mocha">
-                Reset akan mengembalikan daftar bahan dan mutasi ke data contoh
-                awal. Akun & pengaturan kedai tetap dipertahankan. Unduh backup
-                terlebih dahulu.
+                Reset akan mengembalikan bahan, menu, penjualan, dan mutasi ke
+                data contoh awal. Akun & pengaturan kedai tetap dipertahankan.
+                Unduh backup terlebih dahulu.
               </p>
               <button
                 className="btn btn-danger btn-sm mt-2.5"
                 onClick={() => setKonfirmasiReset(true)}
               >
                 <IconRestore className="size-3.5" />
-                Reset data bahan & mutasi
+                Reset data operasional
               </button>
             </div>
           </div>
@@ -433,12 +601,13 @@ export function PengaturanPage() {
 
       <ConfirmDialog
         buka={konfirmasiReset}
-        judul="Reset data bahan & mutasi?"
+        judul="Reset data operasional?"
         pesan={
           <>
-            Seluruh bahan dan mutasi saat ini akan diganti dengan data contoh
-            awal. Tindakan ini <b className="text-danger">tidak bisa dibatalkan</b>.
-            Akun pengguna dan identitas kedai tetap tersimpan.
+            Seluruh bahan, menu, penjualan, dan mutasi saat ini akan diganti
+            dengan data contoh awal. Tindakan ini{' '}
+            <b className="text-danger">tidak bisa dibatalkan</b>. Akun pengguna
+            dan identitas kedai tetap tersimpan.
           </>
         }
         labelKonfirmasi="Ya, reset data"

@@ -1,34 +1,25 @@
-# Banggala Stock
+# Banggala Stock v2
 
-Sistem pencatatan stok bahan untuk **Kedai Kopi Banggala**. Aplikasi web lokal
-(berjalan di browser) untuk mencatat bahan masuk/keluar, memantau sisa stok,
-memberi peringatan stok menipis, serta membuat laporan harian/bulanan.
+Sistem pencatatan **stok bahan**, **menu & resep**, dan **penjualan** untuk **Kedai Kopi Banggala**.
+Aplikasi web lokal (berjalan di browser) — **tanpa server/database eksternal**, seluruh data di `localStorage`.
 
-Dibangun dengan React 19 + TypeScript + Vite + Tailwind CSS v4. Tidak memerlukan
-server atau database eksternal — seluruh data disimpan di `localStorage` browser.
+Fokus **stok saja**: tidak ada perhitungan harga, HPP, omzet, laba, atau margin. Penjualan mencatat item + jumlah dan otomatis memotong stok bahan sesuai resep.
 
 ---
 
 ## Fitur
 
-- **Login multi-user** dengan role **Admin** dan **Staf**. Password di-hash
-  memakai PBKDF2 (SHA-256, salt per akun), bukan disimpan sebagai teks biasa.
-- **Dashboard**: nilai persediaan, daftar bahan yang perlu restock, grafik nilai
-  pemakaian 7 hari, dan aktivitas mutasi terbaru.
-- **Bahan & stok**: tambah/ubah/arsip bahan, kategori, satuan, stok minimum,
-  harga rata-rata, nilai persediaan, dan status (Aman / Menipis / Habis).
-- **Mutasi stok**: catat stok masuk (dengan harga beli) dan stok keluar
-  (pemakaian, rusak, tumpah, sample, koreksi). Stok dihitung otomatis dari
-  seluruh riwayat mutasi.
-- **Validasi**: stok keluar tidak bisa melebihi stok tersedia; nama bahan
-  duplikat ditolak; minimal satu admin harus tetap aktif.
-- **Laporan**: filter periode (hari ini, 7 hari, bulan ini, bulan lalu, kustom),
-  ringkasan per bahan (stok awal → masuk → keluar → stok akhir), detail mutasi,
-  **export CSV**, dan **cetak** (A4 landscape).
-- **Pengguna**: kelola akun, role, status aktif, dan reset password.
-- **Pengaturan**: identitas kedai, master kategori/satuan, ubah password sendiri,
-  **backup/restore JSON**, reset data, dan log aktivitas.
-- **Responsif** untuk desktop, tablet, dan HP.
+| Modul | Deskripsi |
+|-------|-----------|
+| **Login** | Multi-user (Admin / Staf). Password di-hash PBKDF2 (SHA-256, salt per akun). |
+| **Dashboard** | Status buka/tutup (WIB), statistik bahan/penjualan/mutasi hari ini, grafik 7 hari, daftar restock, transaksi terbaru. |
+| **Bahan & Stok** | Tambah/ubah/arsip bahan; kategori & satuan kustom; stok minimum; status (Aman / Menipis / Habis). **Tanpa kolom harga/nilai.** |
+| **Menu & Resep** | 28 menu katalog Kedai Kopi Banggala (dari web profil) + resep **estimasi** yang bisa diedit; menu tanpa resep boleh dijual (stok tidak terpotong, diberi peringatan); Export CSV. |
+| **Penjualan** | Catat multi-item; **validasi stok real-time** (tolak jika tidak cukup); nomor otomatis `PJ-YYYYMMDD-XXX`; Admin bisa edit/hapus → stok dihitung ulang. |
+| **Mutasi Stok** | Masuk/keluar manual (pembelian, rusak, sample, koreksi, dsb); validasi stok tidak negatif; tanpa harga satuan. |
+| **Laporan** | Periode preset/kustom; ringkasan per bahan (stok awal → masuk → keluar → akhir); rekap menu terjual (qty + jumlah transaksi); detail mutasi; **Export 3 CSV** (ringkasan, detail, penjualan); **Cetak** (A4 landscape, tanpa tombol). |
+| **Pengaturan** | Identitas kedai (nama, tagline, alamat, kota, tanggal berdiri, ID Halal, IG, TikTok, Maps, GoFood, GrabFood, situs profil — **tanpa telepon**); Jam operasional per hari (WIB, Jumat libur default); Kategori & satuan bahan/menu; Keamanan akun (ubah password); **Backup/Restore JSON**; Reset data operasional; Log aktivitas 25 terbaru. |
+| **Responsif** | Desktop, tablet, HP. Print-friendly. |
 
 ---
 
@@ -41,7 +32,7 @@ npm install
 npm run dev
 ```
 
-Buka <http://localhost:5173>.
+Buka <http://localhost:5173> (atau port yang ditampilkan Vite).
 
 ### Akun awal
 
@@ -49,9 +40,7 @@ Buka <http://localhost:5173>.
 | -------- | ---------- | ----- |
 | `admin`  | `admin123` | Admin |
 
-> Segera ubah password melalui **Pengaturan → Keamanan Akun** setelah login
-> pertama. Hint akun awal di halaman login hanya berlaku selama password belum
-> diubah.
+> Segera ubah password lewat **Pengaturan → Keamanan Akun** setelah login pertama.
 
 ### Build produksi
 
@@ -60,76 +49,78 @@ npm run build     # type-check + build ke folder dist/
 npm run preview   # menjalankan hasil build di http://localhost:4173
 ```
 
-Hasil build dapat di-host di hosting statis apa pun. Aplikasi memakai
-`HashRouter`, jadi tidak memerlukan konfigurasi rewrite URL.
+Hasil build bisa di-host di hosting statis apa pun. Aplikasi memakai `HashRouter`, tidak butuh rewrite URL.
 
 ---
 
 ## Hak Akses
 
-| Kemampuan                       | Admin | Staf |
-| ------------------------------- | :---: | :--: |
-| Melihat dashboard & stok        |   ✓   |  ✓   |
-| Mencatat stok masuk/keluar      |   ✓   |  ✓   |
-| Melihat & export laporan        |   ✓   |  ✓   |
-| Tambah/ubah bahan               |   ✓   |  ✓   |
-| Arsipkan bahan                  |   ✓   |  –   |
-| Ubah/hapus mutasi               |   ✓   |  –   |
-| Kelola pengguna                 |   ✓   |  –   |
-| Pengaturan, backup, reset data  |   ✓   |  –   |
+| Kemampuan | Admin | Staf |
+|-----------|:----:|:----:|
+| Dashboard, stok, laporan | ✓ | ✓ |
+| Catat stok masuk/keluar | ✓ | ✓ |
+| Tambah/ubah bahan & menu | ✓ | ✓ |
+| Arsipkan bahan/menu | ✓ | – |
+| Ubah/hapus mutasi manual | ✓ | – |
+| **Edit/hapus penjualan** | ✓ | – |
+| Kelola pengguna | ✓ | – |
+| Pengaturan, backup, reset | ✓ | – |
 
 ---
 
-## Alur Pemakaian yang Disarankan
+## Alur Pemakaian Disarankan
 
-1. **Pengaturan** — isi identitas kedai, sesuaikan kategori dan satuan.
-2. **Bahan & Stok** — tambahkan seluruh bahan. Isi stok awal dan harga satuan
-   pada form tambah bahan (otomatis tercatat sebagai mutasi masuk).
-3. **Mutasi Stok** — catat pembelian bahan setiap restock, dan catat pemakaian
-   atau bahan rusak setiap hari.
-4. **Dashboard** — pantau bahan berstatus *Menipis*/*Habis* dan nilai persediaan.
-5. **Laporan** — pilih periode, export CSV ke Excel, atau cetak untuk arsip.
-6. **Pengaturan → Data & Backup** — unduh backup JSON secara rutin.
+1. **Pengaturan** — isi identitas kedai, sesuaikan jam operasional, kategori & satuan.
+2. **Menu & Resep** — periksa 28 menu katalog, sesuaikan resep estimasi ke praktik dapur.
+3. **Bahan & Stok** — tambahkan bahan jika perlu; catat **stok awal** via form tambah bahan (otomatis mutasi masuk).
+4. **Penjualan** — catat transaksi harian; stok otomatis terpotong.
+5. **Dashboard** — pantau bahan perlu restock & status buka/tutup real-time.
+6. **Laporan** — pilih periode, export CSV, atau cetak untuk arsip.
+7. **Pengaturan → Data & Backup** — unduh backup JSON secara rutin.
 
 ---
 
 ## Perhitungan Stok
 
-- **Stok saat ini** = total mutasi masuk − total mutasi keluar (seluruh waktu).
-  Stok tidak disimpan sebagai angka terpisah, sehingga selalu konsisten dengan
-  riwayat.
-- **Harga rata-rata** = total nilai pembelian ÷ total kuantitas pembelian
-  (weighted average). Harga ini dipakai untuk menilai persediaan dan estimasi
-  nilai pemakaian.
+- **Stok saat ini** = Σ mutasi masuk − Σ mutasi keluar (seluruh waktu). Stok **tidak disimpan terpisah**, selalu konsisten dengan riwayat.
 - **Status stok**:
-  - `Habis` jika stok ≤ 0
+  - `Habis` &nbsp;&nbsp; jika stok ≤ 0
   - `Menipis` jika 0 < stok ≤ stok minimum
-  - `Aman` jika stok > stok minimum
-- **Nilai persediaan** = Σ (stok × harga rata-rata).
-- **Nilai keluar** pada laporan adalah estimasi: kuantitas keluar × harga
-  rata-rata bahan.
-
-CSV memakai pemisah titik koma (`;`) dan BOM UTF-8 agar langsung rapi saat
-dibuka di Excel dengan format Indonesia.
+  - `Aman` &nbsp;&nbsp;&nbsp; jika stok > stok minimum
+- **Penjualan** memotong stok: Σ (resep per item × jumlah terjual).
+- Menu **tanpa resep** boleh dicatat tapi **stok tidak dipotong** (ditandai “Sebagian” pada tabel).
+- **Edit/hapus penjualan (admin)**: mutasi keluar lama dihapus, stok dihitung ulang dari histori bersih.
+- Laporan ringkasan: `stokAkhir = stokAwal + masuk − keluar` pada periode.
 
 ---
 
 ## Penyimpanan Data & Backup
 
-- Data disimpan di `localStorage` dengan key **`banggala_db_v1`**.
-- Data **melekat pada browser/perangkat**. Membuka aplikasi di HP lain akan
-  memakai database terpisah, bukan data yang sama.
-- Menghapus data situs/browser akan menghilangkan seluruh catatan. **Lakukan
-  backup rutin** melalui **Pengaturan → Data & Backup → Unduh backup JSON**.
-- Restore akan menimpa seluruh data saat ini dengan isi file backup.
-- Aplikasi ini dirancang untuk pemakaian lokal di satu komputer kedai, bukan
-  untuk diekspos ke internet. Sesi login disimpan di browser selama 12 jam.
+- Key localStorage: **`banggala_db_v1`** (nama sama v1 agar migrasi transparan).
+- Data **melekat pada browser/perangkat**. Buka di HP lain = database terpisah.
+- **Hapus data situs/browser = hapus seluruh catatan.** Backup rutin lewat **Pengaturan → Data & Backup → Unduh backup JSON**.
+- Restore menimpa seluruh data dengan isi file backup.
+- Dirancang untuk pemakaian lokal di satu komputer kedai, **bukan diekspos ke internet**.
+- Sesi login bertahan 12 jam.
 
-### Jika lupa password admin
+### Lupa password admin
 
-Pulihkan backup yang masih memiliki akses, atau — jika tidak ada — hapus key
-`banggala_db_v1` di DevTools → Application → Local Storage (data akan kembali ke
-contoh awal dan seluruh catatan hilang).
+Pulihkan backup yang masih punya akses, atau — jika tidak ada — hapus key `banggala_db_v1` di DevTools → Application → Local Storage (data kembali ke contoh awal, **seluruh catatan hilang**).
+
+---
+
+## Migrasi dari v1 (Otomatis)
+
+Saat membuka aplikasi v2 dengan data v1 di localStorage:
+
+1. **Pengaturan**: field `telepon` dibuang; field lain dipertahankan; jam operasional default terisi jika kosong.
+2. **Katalog v2 ditambahkan**: 36 bahan & 28 menu web profil dimasukkan jika belum ada. Data bahan/menu lama **tidak dihapus**.
+3. **Stok awal migrasi**: hanya bahan **baru** dari katalog v2 mendapat mutasi masuk sesuai seed pembelian. Bahan lama **tidak** mendapat stok ganda.
+4. **Mutasi & penjualan lama utuh**: seluruh riwayat mutasi (termasuk harga satuan warisan) dan transaksi penjualan (termasuk omzet/HPP/laba warisan) **dipertahankan** di storage, tapi **tidak ditampilkan** di UI.
+5. **Item penjualan lama** tanpa snapshot nama dilengkapi otomatis dari katalog menu.
+6. **Idempoten**: menjalankan migrasi berkali-kali tidak menggandakan data.
+
+> Kolom warisan uang (`hargaSatuan` di mutasi, `harga`/`hppSatuan` di item penjualan, `omzet/hpp/laba` di penjualan, `harga` di menu, `hargaRataRata/nilai` di StokInfo) **masih ada di schema** agar backup lama valid, tapi **tidak pernah dibaca/ditampilkan** di v2.
 
 ---
 
@@ -143,28 +134,33 @@ contoh awal dan seluruh catatan hilang).
 ├─ tsconfig.json
 └─ src/
    ├─ main.tsx              # entry point + provider
-   ├─ App.tsx               # routing
-   ├─ styles.css            # tema Tailwind + gaya cetak
-   ├─ types.ts              # tipe data
+   ├─ App.tsx               # routing (HashRouter)
+   ├─ styles.css            # tema Tailwind v4 + font lokal + gaya cetak
+   ├─ types.ts              # tipe data v2 (field uang opsional/legacy)
    ├─ context/
    │  ├─ AuthContext.tsx    # sesi, login, ganti password
-   │  ├─ DataContext.tsx    # data kedai + seluruh aksi
+   │  ├─ DataContext.tsx    # data kedai + seluruh aksi (stok-only)
    │  └─ ToastContext.tsx   # notifikasi
    ├─ lib/
-   │  ├─ seed.ts            # data contoh & inisialisasi
-   │  ├─ storage.ts         # localStorage
+   │  ├─ seed.ts            # data contoh & inisialisasi v2
+   │  ├─ storage.ts         # localStorage + normalisasiDB (migrasi v1→v2)
    │  ├─ auth.ts            # PBKDF2 + sesi
-   │  ├─ stock.ts           # perhitungan stok & laporan
-   │  ├─ format.ts          # format Rupiah/tanggal
-   │  ├─ csv.ts             # export CSV/JSON
-   │  └─ id.ts              # util id & angka
+   │  ├─ stock.ts           # hitungStok, ringkasanPeriode, aktivitasHarian, penjualanHarian
+   │  ├─ menu.ts            # kebutuhanBahan, periksaKetersediaan, rincianKebutuhan, menuTanpaResep
+   │  ├─ operasional.ts     # statusBukaSekarang (Asia/Jakarta), jadwal mingguan
+   │  ├─ dataAwal.ts        # katalog 28 menu + 36 bahan + seed penjualan/mutasi
+   │  ├─ format.ts          # format angka/tanggal (id-ID)
+   │  ├─ csv.ts             # export CSV (titik koma, BOM UTF-8) & JSON
+   │  └─ id.ts              # uid, keAngka, keDesimal, pangkas
    ├─ components/
    │  ├─ Layout.tsx, ProtectedRoute.tsx, Icons.tsx
-   │  └─ ui/                # Modal, Badge, Field, dll.
+   │  └─ ui/                # Modal, Badge, Field, ConfirmDialog, dll.
    └─ pages/
       ├─ LoginPage.tsx
       ├─ DashboardPage.tsx
       ├─ BahanPage.tsx
+      ├─ MenuPage.tsx
+      ├─ PenjualanPage.tsx
       ├─ MutasiPage.tsx
       ├─ LaporanPage.tsx
       ├─ PenggunaPage.tsx
@@ -175,10 +171,32 @@ contoh awal dan seluruh catatan hilang).
 
 ## Catatan Teknis
 
-- Format mata uang: `Rp 1.234.567`; tanggal: `31 Okt 2026` (locale `id-ID`).
-- Akses dari HP dalam jaringan yang sama: jalankan `npm run dev -- --host`,
-  lalu buka alamat IP komputer (mis. `http://192.168.1.10:5173`). Ingat bahwa
-  data tetap terpisah per perangkat.
-- PDF/print laporan diatur ke A4 landscape.
-- Reset data di Pengaturan hanya mengembalikan **bahan & mutasi** ke data contoh;
-  akun dan identitas kedai dipertahankan.
+- **Font lokal** (bundled di `public/fonts/`): Epilogue (display), Plus Jakarta Sans (UI), Space Mono (angka/mono).
+- **Palet resmi**: `#190e09` (espresso), `#2a1810` (coffee), `#a66a1e` (caramel), `#f4bd65` (gold), `#fef8f4` (cream), `#f2ede9` (sand), `#e7ddd6` (line).
+- **Zona waktu**: Semua perhitungan jam operasional memakai **Asia/Jakarta (WIB)** via `Intl.DateTimeFormat`, bukan zona perangkat.
+- **Jam operasional default**: Senin–Kamis & Sabtu–Minggu 09.00–23.59, **Jumat libur**.
+- **CSV**: pemisah `;`, BOM UTF-8, langsung rapi di Excel Indonesia.
+- **Print laporan**: A4 landscape, header kedai + periode, footer pencetakan, tombol/navigasi disembunyikan via `.no-print`.
+- **Reset data** di Pengaturan: mengembalikan bahan, menu, penjualan, mutasi ke data contoh awal; **akun & identitas kedai dipertahankan**.
+
+---
+
+## QA Otomatis (skrip sementara)
+
+```bash
+npx esbuild qa-sementara.ts --bundle --platform=node --format=esm --outfile=/tmp/qa.mjs && node /tmp/qa.mjs
+```
+
+Menguji:
+- Integritas seed (28 menu, 36 bahan, 3 penjualan seed, mutasi konsisten)
+- Stok non-negatif (akhir & berjalan kronologis)
+- Validitas resep (bahanId valid, jumlah > 0, tidak duplikat)
+- Penolakan stok tidak cukup (`periksaKetersediaan`)
+- Migrasi v1→v2 (data lama utuh, katalog v2 ditambah, stok awal hanya bahan baru, telepon dibuang, field uang warisan dipertahankan)
+- Status buka/tutup WIB (Senin–Kamis/Sabtu–Minggu 09.00–23.59, Jumat libur, komputasi `Asia/Jakarta`)
+
+---
+
+## Lisensi
+
+Internal — Kedai Kopi Banggala.

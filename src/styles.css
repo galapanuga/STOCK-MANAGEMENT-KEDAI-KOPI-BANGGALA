@@ -1,17 +1,52 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Epilogue";
+  src: url("/fonts/epilogue-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plus-jakarta-sans-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("/fonts/space-mono-400-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("/fonts/space-mono-700-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 @theme {
-  --color-espresso: #2b1b12;
-  --color-coffee: #4a3023;
-  --color-mocha: #7a5643;
-  --color-caramel: #b97a4b;
-  --color-caramel-dark: #9c6338;
-  --color-latte: #e7d6c3;
-  --color-cream: #fbf7f1;
-  --color-sand: #f1e8dc;
-  --color-line: #e8ddd0;
-  --color-ink: #2a211c;
-  --color-muted: #8c7b6e;
+  --color-espresso: #190e09;
+  --color-coffee: #2a1810;
+  --color-mocha: #625752;
+  --color-caramel: #a66a1e;
+  --color-caramel-dark: #855416;
+  --color-latte: #ead5bf;
+  --color-cream: #f8f3ef;
+  --color-sand: #f2ede9;
+  --color-line: #e7ddd6;
+  --color-ink: #1d1b19;
+  --color-muted: #625752;
+  --color-gold: #f4bd65;
+  --color-paper: #fef8f4;
+  --color-white: #fffdfa;
   --color-success: #2f7d5b;
   --color-success-soft: #e4f2eb;
   --color-warning: #b47a16;
@@ -19,9 +54,11 @@
   --color-danger: #b4483c;
   --color-danger-soft: #fbe9e7;
 
-  --font-sans: "Segoe UI", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue",
-    Arial, sans-serif;
-  --font-display: Georgia, "Times New Roman", serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Epilogue", "Plus Jakarta Sans", ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
 }
 
 @layer base {
@@ -32,6 +69,12 @@
 
   body {
     @apply bg-cream text-ink font-sans;
+  }
+
+  .app-surface {
+    background-color: var(--color-cream);
+    background-image: radial-gradient(#a66a1e12 0.7px, transparent 0.7px);
+    background-size: 18px 18px;
   }
 
   ::selection {
@@ -46,7 +89,7 @@
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(43,27,18,0.04)];
+    @apply rounded-2xl border border-line bg-white shadow-[0_2px_8px_rgba(42,24,16,0.035)];
   }
 
   .btn {
@@ -54,7 +97,7 @@
   }
 
   .btn-primary {
-    @apply bg-espresso text-white hover:bg-coffee;
+    @apply bg-coffee text-white hover:bg-espresso;
   }
 
   .btn-caramel {
@@ -94,7 +137,7 @@
   }
 
   .table-banggala thead th {
-    @apply whitespace-nowrap bg-sand/60 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-mocha;
+    @apply whitespace-nowrap bg-sand/60 px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-wider text-mocha;
   }
 
   .table-banggala tbody td {
@@ -114,11 +157,15 @@
   }
 
   .nav-link-active {
-    @apply bg-white/12 text-white shadow-inner;
+    @apply bg-gold/15 text-gold shadow-inner;
   }
 
   .stat-value {
-    @apply font-display text-2xl leading-tight font-bold text-espresso sm:text-[28px];
+    @apply font-mono text-[22px] leading-tight font-bold text-espresso sm:text-[25px];
+  }
+
+  .eyebrow {
+    @apply font-mono text-[10px] font-bold tracking-[0.14em] uppercase;
   }
 
   .scroll-thin {
@@ -209,7 +256,7 @@
   }
 
   .table-banggala thead th {
-    background: #f1e8dc !important;
+    background: #f2ede9 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

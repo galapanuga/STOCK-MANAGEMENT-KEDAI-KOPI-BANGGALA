@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import {
   IconAlert,
   IconCheck,
-  IconCoffee,
   IconEye,
   IconEyeOff,
   IconShield,
@@ -21,6 +20,12 @@ export function LoginPage() {
   const [lihatPassword, setLihatPassword] = useState(false)
   const [galat, setGalat] = useState('')
   const [memproses, setMemproses] = useState(false)
+  const tanggalBerdiri = db?.pengaturan.tanggalBerdiri ?? '2024-01-15'
+  const tanggalBerdiriLabel = new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(`${tanggalBerdiri}T00:00:00`))
 
   if (user) return <Navigate to={dari} replace />
 
@@ -47,51 +52,56 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream lg:grid lg:grid-cols-[1.02fr_1fr]">
-      <section className="relative hidden overflow-hidden bg-espresso px-12 py-14 text-cream lg:flex lg:flex-col lg:justify-between">
+    <div className="app-surface min-h-screen lg:grid lg:grid-cols-[1.02fr_1fr]">
+      <section className="relative hidden overflow-hidden bg-[linear-gradient(135deg,#190e09_0%,#2a1810_62%,#42291b_100%)] px-12 py-14 text-cream lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-24 -right-24 size-[420px] rounded-full bg-caramel/20 blur-3xl" />
+          <div className="absolute -top-24 -right-24 size-[420px] rounded-full bg-gold/15 blur-3xl" />
           <div className="absolute bottom-0 -left-32 size-[380px] rounded-full bg-coffee/40 blur-3xl" />
           <div className="absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:26px_26px]" />
         </div>
 
         <div className="relative flex items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-xl bg-caramel shadow-lg shadow-black/30">
-            <IconCoffee className="size-6" />
+          <div className="flex h-12 w-[88px] items-center justify-center rounded-xl bg-paper px-2 shadow-lg shadow-black/30">
+            <img
+              src="/images/logo.png"
+              alt="Kedai Kopi Banggala"
+              className="w-full object-contain"
+            />
           </div>
           <div>
-            <p className="font-display text-xl leading-none font-bold tracking-wide">
-              Banggala
+            <p className="font-display text-lg leading-none font-bold tracking-tight">
+              Banggala Stock
             </p>
-            <p className="mt-1 text-[9px] font-semibold tracking-[0.24em] text-latte/60 uppercase">
-              Coffee &amp; Stock
+            <p className="mt-1 text-[9px] font-semibold tracking-[0.16em] text-latte/60 uppercase">
+              Sistem Operasional Kedai
             </p>
           </div>
         </div>
 
         <div className="relative max-w-md">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-latte/80 uppercase">
-            <span className="size-1.5 rounded-full bg-caramel" />
-            Sejak 2019
+            <span className="size-1.5 rounded-full bg-gold" />
+            Sejak {tanggalBerdiriLabel}
           </span>
           <h1 className="mt-5 font-display text-[42px] leading-[1.08] font-bold tracking-tight text-white">
-            Stok rapi,
+            Sedikit, tapi
             <br />
-            seduhan konsisten.
+            terus berjalan.
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-latte/70">
-            Catat setiap bahan masuk dan keluar, pantau sisa stok, dan lihat
-            laporan pemakaian Kedai Kopi Banggala dalam satu tempat.
+            Banggala percaya pada langkah kecil yang konsisten. Kelola bahan,
+            atur resep menu, dan catat penjualan yang otomatis memotong stok —
+            semuanya dalam satu tempat.
           </p>
 
           <ul className="mt-8 space-y-3">
             {[
-              'Stok bahan selalu terhitung otomatis',
+              'Stok bahan terhitung otomatis dari mutasi',
+              'Resep menu memotong stok saat terjual',
               'Peringatan saat stok menipis',
-              'Laporan harian & bulanan siap cetak',
             ].map((teks) => (
               <li key={teks} className="flex items-center gap-3 text-sm text-latte/85">
-                <span className="grid size-5 shrink-0 place-items-center rounded-full bg-caramel/20 text-caramel">
+                <span className="grid size-5 shrink-0 place-items-center rounded-full bg-gold/15 text-gold">
                   <IconCheck className="size-3" />
                 </span>
                 {teks}
@@ -100,10 +110,10 @@ export function LoginPage() {
           </ul>
         </div>
 
-        <div className="relative flex items-end justify-between text-[11px] text-latte/45">
+        <div className="relative flex items-end justify-between gap-4 text-[11px] text-latte/55">
           <div>
-            <p>{db?.pengaturan.alamat || 'Jl. Kopi No. 17, Bandung'}</p>
-            <p className="mt-0.5">{db?.pengaturan.telepon || '0812-3456-7890'}</p>
+            <p>{db?.pengaturan.kota || 'Jadimulya, Gunungjati, Cirebon'}</p>
+            <p className="mt-0.5">Kedai Kopi Banggala</p>
           </div>
           <p>© {new Date().getFullYear()} {db?.pengaturan.namaKedai || 'Kedai Kopi Banggala'}</p>
         </div>
@@ -112,28 +122,32 @@ export function LoginPage() {
       <section className="flex min-h-screen flex-col justify-center px-5 py-10 sm:px-10 lg:px-14">
         <div className="mx-auto w-full max-w-[380px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="grid size-11 place-items-center rounded-xl bg-espresso text-cream">
-              <IconCoffee className="size-6" />
+            <div className="flex h-11 w-[78px] items-center justify-center rounded-xl bg-paper px-1.5 shadow-sm">
+              <img
+                src="/images/logo.png"
+                alt="Kedai Kopi Banggala"
+                className="w-full object-contain"
+              />
             </div>
             <div>
-              <p className="font-display text-lg leading-none font-bold text-espresso">
-                Banggala
+              <p className="font-display text-[15px] leading-tight font-bold text-espresso">
+                Banggala Stock
               </p>
-              <p className="mt-1 text-[9px] font-semibold tracking-[0.2em] text-muted uppercase">
-                Coffee &amp; Stock
+              <p className="mt-1 text-[9px] font-semibold tracking-[0.15em] text-muted uppercase">
+                Kedai Kopi Banggala
               </p>
             </div>
           </div>
 
           <div className="mb-7">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-caramel uppercase">
-              Sistem Pencatatan Stok
+            <p className="eyebrow text-caramel">
+              Stok · Menu · Penjualan
             </p>
             <h2 className="mt-2 font-display text-[30px] leading-tight font-bold text-espresso">
               Selamat datang kembali
             </h2>
             <p className="mt-1.5 text-sm text-muted">
-              Masuk dengan akun kedai untuk mulai mencatat.
+              Masuk dengan akun kedai untuk mulai mencatat stok dan penjualan.
             </p>
           </div>
 

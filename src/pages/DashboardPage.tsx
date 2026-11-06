@@ -11,35 +11,29 @@ import {
   IconCalendar,
   IconCoffee,
   IconPlus,
+  IconReceipt,
   IconSwap,
   IconTrend,
-  IconWallet,
 } from '../components/Icons'
-import { BadgeStok, BadgeTipe } from '../components/ui/Badge'
+import { BadgeStok } from '../components/ui/Badge'
 import { EmptyState, SectionHeader } from '../components/ui/Field'
 import {
   formatAngka,
-  formatRupiah,
-  formatRupiahRingkas,
   formatTanggal,
   formatTanggalPanjang,
   formatWaktu,
   kunciTanggal,
   sapaan,
 } from '../lib/format'
-import { pemakaianHarian } from '../lib/stock'
+import { penjualanHarian } from '../lib/stock'
+import { statusBukaSekarang } from '../lib/operasional'
+import { totalItem } from '../lib/menu'
 
 export function DashboardPage() {
   const { user } = useAuth()
-  const { db, stok, bahanMap } = useData()
+  const { db, stok } = useData()
 
   const bahanAktif = useMemo(() => db.bahan.filter((b) => !b.arsip), [db.bahan])
-
-  const nilaiTotal = useMemo(
-    () =>
-      bahanAktif.reduce((total, b) => total + (stok.get(b.id)?.nilai ?? 0), 0),
-    [bahanAktif, stok],
-  )
 
   const perluRestock = useMemo(() => {
     return bahanAktif
@@ -57,41 +51,56 @@ export function DashboardPage() {
   ).length
 
   const hariIni = kunciTanggal(new Date())
+
   const mutasiHariIni = useMemo(
     () => db.mutasi.filter((m) => kunciTanggal(m.tanggal) === hariIni),
     [db.mutasi, hariIni],
   )
 
-  const grafik = useMemo(
-    () => pemakaianHarian(db.mutasi, stok, 7),
-    [db.mutasi, stok],
+  const penjualanHariIni = useMemo(
+    () => db.penjualan.filter((p) => kunciTanggal(p.tanggal) === hariIni),
+    [db.penjualan, hariIni],
   )
+
+  const itemHariIni = useMemo(
+    () => penjualanHariIni.reduce((total, p) => total + totalItem(p.items), 0),
+    [penjualanHariIni],
+  )
+
+  const grafik = useMemo(() => penjualanHarian(db.penjualan, 7), [db.penjualan])
   const maxGrafik = Math.max(...grafik.map((g) => g.total), 1)
+  const puncak = Math.max(...grafik.map((g) => g.total), 0)
 
   const terbaru = useMemo(
     () =>
-      [...db.mutasi]
+      [...db.penjualan]
         .sort(
           (a, b) =>
             new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime(),
         )
-        .slice(0, 8),
-    [db.mutasi],
+        .slice(0, 6),
+    [db.penjualan],
   )
 
   const kategoriUnik = new Set(bahanAktif.map((b) => b.kategori)).size
   const totalMasukHariIni = mutasiHariIni.filter((m) => m.tipe === 'masuk').length
   const totalKeluarHariIni = mutasiHariIni.filter((m) => m.tipe === 'keluar').length
 
+  const status = useMemo(
+    () => statusBukaSekarang(db.pengaturan.jamOperasional),
+    [db.pengaturan.jamOperasional],
+  )
+
   return (
     <div className="animate-rise">
-      <div className="mb-6 flex flex-col gap-4 rounded-3xl bg-espresso p-5 text-cream sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="relative mb-6 flex flex-col gap-4 overflow-hidden rounded-3xl border border-gold/15 bg-[linear-gradient(125deg,#190e09_0%,#2a1810_68%,#40271b_100%)] p-5 text-cream shadow-[0_12px_32px_rgba(42,24,16,0.12)] sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="pointer-events-none absolute -top-24 right-12 size-64 rounded-full bg-gold/10 blur-3xl" />
         <div className="flex items-start gap-4">
-          <div className="hidden size-12 shrink-0 place-items-center rounded-2xl bg-caramel/20 text-caramel sm:grid">
+          <div className="relative hidden size-12 shrink-0 place-items-center rounded-2xl border border-gold/15 bg-gold/10 text-gold sm:grid">
             <IconCoffee className="size-6" />
           </div>
-          <div>
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-latte/55 uppercase">
+          <div className="relative">
+            <p className="eyebrow text-gold/80">
               {formatTanggalPanjang(new Date())}
             </p>
             <h1 className="mt-1 font-display text-[26px] leading-tight font-bold text-white sm:text-3xl">
@@ -102,22 +111,31 @@ export function DashboardPage() {
                 ? `Ada ${perluRestock.length} bahan yang perlu diperhatikan stoknya hari ini.`
                 : 'Semua stok bahan dalam kondisi aman. Seduhan siap mengalir.'}
             </p>
+            <span
+              className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+                status.buka
+                  ? 'border-success/40 bg-success/15 text-emerald-200'
+                  : 'border-white/15 bg-white/5 text-latte/70'
+              }`}
+            >
+              <span
+                className={`size-1.5 rounded-full ${status.buka ? 'bg-emerald-300' : 'bg-latte/60'}`}
+              />
+              {status.buka ? 'Buka' : 'Tutup'} · {status.keterangan}
+            </span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/mutasi?form=masuk"
-            className="btn btn-caramel w-full sm:w-auto"
-          >
-            <IconArrowDown className="size-4" />
-            Catat Stok Masuk
+        <div className="relative flex flex-wrap gap-2">
+          <Link to="/penjualan?form=baru" className="btn btn-caramel w-full sm:w-auto">
+            <IconPlus className="size-4" />
+            Catat Penjualan
           </Link>
           <Link
-            to="/mutasi?form=keluar"
+            to="/mutasi?form=masuk"
             className="btn border border-white/20 bg-white/5 text-cream hover:bg-white/10"
           >
-            <IconArrowUp className="size-4" />
-            Stok Keluar
+            <IconArrowDown className="size-4" />
+            Stok Masuk
           </Link>
         </div>
       </div>
@@ -129,13 +147,6 @@ export function DashboardPage() {
           keterangan={`${kategoriUnik} kategori bahan`}
           ikon={<IconBox className="size-5" />}
           warna="bg-sand text-coffee"
-        />
-        <StatCard
-          label="Nilai Persediaan"
-          value={formatRupiahRingkas(nilaiTotal)}
-          keterangan={formatRupiah(nilaiTotal)}
-          ikon={<IconWallet className="size-5" />}
-          warna="bg-success-soft text-success"
         />
         <StatCard
           label="Perlu Restock"
@@ -151,25 +162,32 @@ export function DashboardPage() {
           }
         />
         <StatCard
+          label="Penjualan Hari Ini"
+          value={String(penjualanHariIni.length)}
+          keterangan={`${formatAngka(itemHariIni)} item terjual`}
+          ikon={<IconReceipt className="size-5" />}
+          warna="bg-latte/50 text-coffee"
+        />
+        <StatCard
           label="Mutasi Hari Ini"
           value={String(mutasiHariIni.length)}
           keterangan={`${totalMasukHariIni} masuk · ${totalKeluarHariIni} keluar`}
           ikon={<IconSwap className="size-5" />}
-          warna="bg-latte/50 text-coffee"
+          warna="bg-warning-soft text-warning"
         />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-12">
         <section className="card xl:col-span-7">
           <SectionHeader
-            judul="Nilai Pemakaian 7 Hari"
-            deskripsi="Estimasi nilai bahan yang terpakai per hari"
+            judul="Penjualan 7 Hari"
+            deskripsi="Jumlah item yang terjual per hari"
             aksi={
               <Link
-                to="/laporan"
+                to="/penjualan"
                 className="inline-flex items-center gap-1 text-xs font-semibold text-caramel hover:underline"
               >
-                Laporan <IconArrowRight className="size-3.5" />
+                Penjualan <IconArrowRight className="size-3.5" />
               </Link>
             }
           />
@@ -178,7 +196,7 @@ export function DashboardPage() {
               <IconTrend className="size-3.5 text-caramel" />
               Puncak minggu ini{' '}
               <span className="font-semibold text-coffee">
-                {formatRupiah(Math.max(...grafik.map((g) => g.total)))}
+                {formatAngka(puncak)} item
               </span>
             </div>
             <div className="flex h-44 items-end gap-2 sm:gap-3">
@@ -191,7 +209,7 @@ export function DashboardPage() {
                     className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5"
                   >
                     <span className="text-[9px] font-semibold text-muted opacity-0 transition-opacity group-hover:opacity-100">
-                      {formatRupiahRingkas(g.total)}
+                      {formatAngka(g.total)} item
                     </span>
                     <div
                       className={`w-full max-w-9 rounded-t-md transition-all ${
@@ -200,7 +218,7 @@ export function DashboardPage() {
                           : 'bg-latte group-hover:bg-caramel'
                       }`}
                       style={{ height: `${tinggi}%` }}
-                      title={`${formatTanggal(g.tanggal)} · ${formatRupiah(g.total)}`}
+                      title={`${formatTanggal(g.tanggal)} · ${formatAngka(g.total)} item`}
                     />
                     <span
                       className={`text-[10px] font-medium ${
@@ -274,11 +292,11 @@ export function DashboardPage() {
 
       <section className="card mt-4">
         <SectionHeader
-          judul="Aktivitas Terbaru"
-          deskripsi="Mutasi stok yang terakhir dicatat"
+          judul="Penjualan Terbaru"
+          deskripsi="Transaksi yang memotong stok secara otomatis"
           aksi={
             <Link
-              to="/mutasi"
+              to="/penjualan"
               className="inline-flex items-center gap-1 text-xs font-semibold text-caramel hover:underline"
             >
               Lihat semua <IconArrowRight className="size-3.5" />
@@ -287,59 +305,60 @@ export function DashboardPage() {
         />
         {terbaru.length === 0 ? (
           <EmptyState
-            judul="Belum ada mutasi"
-            pesan="Mulai dengan mencatat stok masuk pertama."
+            judul="Belum ada penjualan"
+            pesan="Catat penjualan pertama untuk memotong stok bahan."
             ikon={<IconCalendar className="size-5" />}
             aksi={
-              <Link to="/mutasi?form=masuk" className="btn btn-primary btn-sm">
-                Catat stok masuk
+              <Link to="/penjualan?form=baru" className="btn btn-primary btn-sm">
+                Catat penjualan
               </Link>
             }
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="table-banggala min-w-[620px]">
+            <table className="table-banggala min-w-[640px]">
               <thead>
                 <tr>
                   <th>Waktu</th>
-                  <th>Bahan</th>
-                  <th>Tipe</th>
-                  <th className="text-right">Jumlah</th>
-                  <th>Oleh</th>
+                  <th>Nomor</th>
+                  <th>Menu</th>
+                  <th className="text-right">Item</th>
+                  <th>Stok</th>
                 </tr>
               </thead>
               <tbody>
-                {terbaru.map((m) => {
-                  const bahan = bahanMap.get(m.bahanId)
-                  return (
-                    <tr key={m.id}>
-                      <td className="whitespace-nowrap text-xs text-muted">
-                        {formatTanggal(m.tanggal)}
-                        <span className="ml-1 text-muted/70">
-                          {formatWaktu(m.tanggal)}
-                        </span>
-                      </td>
-                      <td className="font-medium text-ink">
-                        {bahan?.nama ?? 'Bahan terhapus'}
-                      </td>
-                      <td>
-                        <BadgeTipe tipe={m.tipe} />
-                      </td>
-                      <td
-                        className={`text-right font-semibold whitespace-nowrap ${
-                          m.tipe === 'masuk' ? 'text-success' : 'text-coffee'
+                {terbaru.map((p) => (
+                  <tr key={p.id}>
+                    <td className="whitespace-nowrap text-xs text-muted">
+                      {formatTanggal(p.tanggal)}
+                      <span className="ml-1 text-muted/70">
+                        {formatWaktu(p.tanggal)}
+                      </span>
+                    </td>
+                    <td className="font-mono text-xs font-semibold whitespace-nowrap text-coffee">
+                      {p.nomor}
+                    </td>
+                    <td className="max-w-64">
+                      <p className="truncate text-sm font-medium text-ink">
+                        {p.items.map((it) => `${it.jumlah}× ${it.nama}`).join(', ')}
+                      </p>
+                    </td>
+                    <td className="text-right text-sm font-semibold whitespace-nowrap text-ink">
+                      {formatAngka(totalItem(p.items))}
+                    </td>
+                    <td>
+                      <span
+                        className={`badge ${
+                          p.stokTerpotong
+                            ? 'bg-success-soft text-success'
+                            : 'bg-warning-soft text-warning'
                         }`}
                       >
-                        {m.tipe === 'masuk' ? '+' : '−'}
-                        {formatAngka(m.jumlah)}{' '}
-                        <span className="text-[11px] font-normal text-muted">
-                          {bahan?.satuan}
-                        </span>
-                      </td>
-                      <td className="text-xs text-muted">{m.userName}</td>
-                    </tr>
-                  )
-                })}
+                        {p.stokTerpotong ? 'Terpotong' : 'Sebagian'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

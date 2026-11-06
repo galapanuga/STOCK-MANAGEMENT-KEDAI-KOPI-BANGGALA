@@ -45,7 +45,6 @@ export const PENGATURAN_RESMI: Pengaturan = {
   tagline: 'Sedikit, tapi terus berjalan.',
   alamat:
     'Jl. Serbaguna, Jadimulya, Kec. Gunungjati, Kabupaten Cirebon, Jawa Barat 45151',
-  telepon: '0812-3456-7890',
   kota: 'Gunungjati, Cirebon',
   tanggalBerdiri: '2024-01-15',
   halalId: 'ID31410022479980525',
@@ -704,23 +703,6 @@ export function daftarPenjualanAwal(user: User): {
   mutasiPenjualan: Mutasi[]
 } {
   const menuMap = new Map(daftarMenuAwal().map((m) => [m.id, m]))
-  const hppPerkiraan: Record<string, number> = {
-    mnu_kopisusugaoel: 6850,
-    mnu_kopisusukedai: 6600,
-    mnu_americano: 4800,
-    mnu_matchacih: 7800,
-    mnu_soklat: 6200,
-    mnu_teh: 2150,
-    mnu_airmineral: 2500,
-    mnu_indomie: 3380,
-    mnu_telurbarendo: 8680,
-    mnu_mienyemek: 6350,
-    mnu_ayampenyet: 11680,
-    mnu_kentang: 5340,
-    mnu_sempol: 7600,
-    mnu_nutrisari: 3000,
-    mnu_canesusu: 4600,
-  }
 
   interface SeedPJ {
     nomor: string
@@ -781,28 +763,18 @@ export function daftarPenjualanAwal(user: User): {
 
     const items = s.items.map((it) => {
       const menu = menuMap.get(it.menuId)!
-      const hppSatuan = hppPerkiraan[it.menuId] ?? Math.round(menu.harga * 0.45)
       return {
         menuId: it.menuId,
         nama: menu.nama,
-        harga: menu.harga,
         jumlah: it.jumlah,
-        hppSatuan,
       }
     })
-
-    const omzet = items.reduce((tot, it) => tot + it.harga * it.jumlah, 0)
-    const hpp = items.reduce((tot, it) => tot + it.hppSatuan * it.jumlah, 0)
-    const laba = omzet - hpp
 
     daftarPJ.push({
       id,
       nomor: s.nomor,
       tanggal,
       items,
-      omzet,
-      hpp,
-      laba,
       catatan: s.catatan,
       stokTerpotong: true,
       userId: user.id,

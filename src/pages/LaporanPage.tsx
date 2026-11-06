@@ -10,7 +10,7 @@ import {
   IconDownload,
   IconInfo,
   IconPrint,
-  IconWallet,
+  IconReceipt,
 } from '../components/Icons'
 import { EmptyState, PageHeader } from '../components/ui/Field'
 import { BadgeTipe } from '../components/ui/Badge'
@@ -21,7 +21,6 @@ import {
   awalBulan,
   awalHari,
   formatAngka,
-  formatRupiah,
   formatTanggal,
   formatTanggalPanjang,
   formatTanggalWaktu,
@@ -30,6 +29,7 @@ import {
   tambahHari,
 } from '../lib/format'
 import { ringkasanPeriode } from '../lib/stock'
+import { totalItem } from '../lib/menu'
 
 type Preset = 'hari-ini' | '7hari' | 'bulan-ini' | 'bulan-lalu' | 'kustom'
 
@@ -42,7 +42,7 @@ const PRESETS: { id: Preset; label: string }[] = [
 ]
 
 export function LaporanPage() {
-  const { db, stok, bahanMap } = useData()
+  const { db, bahanMap } = useData()
   const toast = useToast()
   const hariIni = new Date()
 
@@ -85,8 +85,8 @@ export function LaporanPage() {
   )
 
   const semuaBaris = useMemo(
-    () => ringkasanPeriode(db.bahan, db.mutasi, mulai, selesai, stok),
-    [db.bahan, db.mutasi, mulai, selesai, stok],
+    () => ringkasanPeriode(db.bahan, db.mutasi, mulai, selesai),
+    [db.bahan, db.mutasi, mulai, selesai],
   )
 
   const baris = useMemo(
@@ -111,12 +111,43 @@ export function LaporanPage() {
       )
   }, [db.mutasi, mulai, selesai])
 
-  const totalMasuk = baris.reduce((t, r) => t + r.nilaiMasuk, 0)
-  const totalKeluar = baris.reduce((t, r) => t + r.nilaiKeluar, 0)
-  const nilaiAkhir = baris.reduce(
-    (t, r) => t + Math.max(0, r.stokAkhir) * r.hargaRataRata,
+  const penjualan = useMemo(() => {
+    const a = mulai.getTime()
+    const b = selesai.getTime()
+    return db.penjualan.filter((p) => {
+      const t = new Date(p.tanggal).getTime()
+      return t >= a && t <= b
+    })
+  }, [db.penjualan, mulai, selesai])
+
+  const menuTerjual = useMemo(() => {
+    const peta = new Map<string, { nama: string; qty: number; transaksi: number }>()
+    for (const p of penjualan) {
+      const sudah = new Set<string>()
+      for (const it of p.items) {
+        const barisMenu = peta.get(it.menuId) ?? {
+          nama: it.nama,
+          qty: 0,
+          transaksi: 0,
+        }
+        barisMenu.qty += it.jumlah
+        if (!sudah.has(it.menuId)) {
+          barisMenu.transaksi += 1
+          sudah.add(it.menuId)
+        }
+        peta.set(it.menuId, barisMenu)
+      }
+    }
+    return [...peta.values()].sort((a, b) => b.qty - a.qty)
+  }, [penjualan])
+
+  const totalItemTerjual = penjualan.reduce(
+    (total, p) => total + totalItem(p.items),
     0,
   )
+  const bahanBergerak = baris.filter((r) => r.masuk > 0 || r.keluar > 0).length
+  const catatanMasuk = detail.filter((m) => m.tipe === 'masuk').length
+  const catatanKeluar = detail.filter((m) => m.tipe === 'keluar').length
 
   const eksporRingkasan = () => {
     if (!periodeValid || baris.length === 0) {
@@ -125,18 +156,7 @@ export function LaporanPage() {
     }
     unduhCSV(
       `Laporan-Stok-Banggala_${dari}_${sampai}.csv`,
-      [
-        'Bahan',
-        'Kategori',
-        'Satuan',
-        'Stok Awal',
-        'Masuk',
-        'Keluar',
-        'Stok Akhir',
-        'Harga Rata-rata',
-        'Nilai Masuk',
-        'Nilai Keluar',
-      ],
+      ['Bahan', 'Kategori', 'Satuan', 'Stok Awal', 'Masuk', 'Keluar', 'Stok Akhir'],
       baris.map((r) => [
         r.bahan.nama,
         r.bahan.kategori,
@@ -145,9 +165,6 @@ export function LaporanPage() {
         r.masuk,
         r.keluar,
         r.stokAkhir,
-        Math.round(r.hargaRataRata),
-        Math.round(r.nilaiMasuk),
-        Math.round(r.nilaiKeluar),
       ]),
     )
     toast.sukses('Ringkasan laporan berhasil diunduh.')
@@ -166,23 +183,18 @@ export function LaporanPage() {
         'Satuan',
         'Tipe',
         'Jumlah',
-        'Harga Satuan',
-        'Nilai',
         'Alasan',
         'Keterangan',
         'Dicatat oleh',
       ],
       detail.map((m) => {
         const bahan = bahanMap.get(m.bahanId)
-        const harga = m.hargaSatuan ?? stok.get(m.bahanId)?.hargaRataRata ?? 0
         return [
           formatTanggalWaktu(m.tanggal),
           bahan?.nama ?? '-',
           bahan?.satuan ?? '',
           m.tipe === 'masuk' ? 'Masuk' : 'Keluar',
           m.jumlah,
-          Math.round(harga),
-          Math.round(m.jumlah * harga),
           m.alasan ?? '',
           m.keterangan ?? '',
           m.userName,
@@ -192,12 +204,25 @@ export function LaporanPage() {
     toast.sukses('Detail mutasi berhasil diunduh.')
   }
 
+  const eksporPenjualan = () => {
+    if (menuTerjual.length === 0) {
+      toast.error('Tidak ada penjualan untuk diekspor.')
+      return
+    }
+    unduhCSV(
+      `Penjualan-Banggala_${dari}_${sampai}.csv`,
+      ['Menu', 'Jumlah Terjual', 'Jumlah Transaksi'],
+      menuTerjual.map((m) => [m.nama, m.qty, m.transaksi]),
+    )
+    toast.sukses('Rekap penjualan berhasil diunduh.')
+  }
+
   return (
     <div className="animate-rise">
       <div className="no-print">
         <PageHeader
           judul="Laporan Stok"
-          deskripsi="Ringkasan pemakaian dan pergerakan stok bahan per periode."
+          deskripsi="Ringkasan pergerakan stok dan menu terjual per periode — tanpa perhitungan uang."
           aksi={
             <>
               <button
@@ -303,33 +328,31 @@ export function LaporanPage() {
         <>
           <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
             <RingkasanCard
-              label="Nilai Stok Akhir"
-              nilai={formatRupiah(nilaiAkhir)}
-              ket={`${baris.length} bahan · per ${formatTanggal(selesai)}`}
-              ikon={<IconWallet className="size-5" />}
+              label="Bahan Bergerak"
+              nilai={String(bahanBergerak)}
+              ket={`dari ${baris.length} bahan pada periode ini`}
+              ikon={<IconChart className="size-5" />}
               warna="bg-sand text-coffee"
             />
             <RingkasanCard
-              label="Nilai Stok Masuk"
-              nilai={formatRupiah(totalMasuk)}
-              ket="Sesuai harga beli tercatat"
+              label="Catatan Masuk"
+              nilai={String(catatanMasuk)}
+              ket="Pembelian & penambahan stok"
               ikon={<IconArrowDown className="size-5" />}
               warna="bg-success-soft text-success"
             />
             <RingkasanCard
-              label="Estimasi Nilai Keluar"
-              nilai={formatRupiah(totalKeluar)}
-              ket="Qty keluar × harga rata-rata"
+              label="Catatan Keluar"
+              nilai={String(catatanKeluar)}
+              ket="Pemakaian & penjualan"
               ikon={<IconArrowUp className="size-5" />}
               warna="bg-latte/50 text-coffee"
             />
             <RingkasanCard
-              label="Transaksi"
-              nilai={String(detail.length)}
-              ket={`${detail.filter((m) => m.tipe === 'masuk').length} masuk · ${
-                detail.filter((m) => m.tipe === 'keluar').length
-              } keluar`}
-              ikon={<IconChart className="size-5" />}
+              label="Penjualan"
+              nilai={String(penjualan.length)}
+              ket={`${formatAngka(totalItemTerjual)} item terjual`}
+              ikon={<IconReceipt className="size-5" />}
               warna="bg-warning-soft text-warning"
             />
           </div>
@@ -352,7 +375,7 @@ export function LaporanPage() {
               />
             ) : (
               <div className="overflow-x-auto">
-                <table className="table-banggala min-w-[860px]">
+                <table className="table-banggala min-w-[680px]">
                   <thead>
                     <tr>
                       <th>Bahan</th>
@@ -360,8 +383,6 @@ export function LaporanPage() {
                       <th className="text-right">Masuk</th>
                       <th className="text-right">Keluar</th>
                       <th className="text-right">Stok Akhir</th>
-                      <th className="text-right">Harga Rata-rata</th>
-                      <th className="text-right">Nilai Keluar</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -388,25 +409,61 @@ export function LaporanPage() {
                             {r.bahan.satuan}
                           </span>
                         </td>
-                        <td className="text-right text-xs whitespace-nowrap text-mocha">
-                          {formatRupiah(r.hargaRataRata)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-bold text-espresso">
+              Menu Terjual
+              <span className="ml-2 text-xs font-normal text-muted">
+                {menuTerjual.length} menu
+              </span>
+            </h2>
+            <button
+              className="btn btn-outline btn-sm no-print"
+              onClick={eksporPenjualan}
+              disabled={menuTerjual.length === 0}
+            >
+              <IconDownload className="size-3.5" />
+              Export Penjualan
+            </button>
+          </div>
+
+          <div className="card mt-2 overflow-hidden">
+            {menuTerjual.length === 0 ? (
+              <EmptyState
+                judul="Belum ada penjualan"
+                pesan="Belum ada transaksi penjualan pada periode ini."
+                ikon={<IconReceipt className="size-5" />}
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table-banggala min-w-[520px]">
+                  <thead>
+                    <tr>
+                      <th>Menu</th>
+                      <th className="text-right">Jumlah Terjual</th>
+                      <th className="text-right">Transaksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {menuTerjual.map((m) => (
+                      <tr key={m.nama}>
+                        <td className="font-medium text-ink">{m.nama}</td>
+                        <td className="text-right text-sm font-bold text-ink">
+                          {formatAngka(m.qty)}
                         </td>
-                        <td className="text-right text-xs font-semibold whitespace-nowrap text-ink">
-                          {formatRupiah(r.nilaiKeluar)}
+                        <td className="text-right text-xs text-muted">
+                          {m.transaksi}
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr className="bg-cream">
-                      <td colSpan={6} className="px-4 py-3 text-right text-xs font-bold tracking-wide text-mocha uppercase">
-                        Total nilai keluar
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-bold whitespace-nowrap text-espresso">
-                        {formatRupiah(totalKeluar)}
-                      </td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             )}
@@ -416,7 +473,7 @@ export function LaporanPage() {
             <h2 className="font-display text-lg font-bold text-espresso">
               Detail Mutasi
               <span className="ml-2 text-xs font-normal text-muted">
-                {detail.length} transaksi
+                {detail.length} catatan
               </span>
             </h2>
             <button
@@ -438,14 +495,13 @@ export function LaporanPage() {
               />
             ) : (
               <div className="scroll-thin max-h-[520px] overflow-auto print:max-h-none">
-                <table className="table-banggala min-w-[760px]">
+                <table className="table-banggala min-w-[680px]">
                   <thead className="sticky top-0 z-10">
                     <tr>
                       <th>Waktu</th>
                       <th>Bahan</th>
                       <th>Tipe</th>
                       <th className="text-right">Jumlah</th>
-                      <th className="text-right">Nilai</th>
                       <th>Keterangan</th>
                       <th>Oleh</th>
                     </tr>
@@ -453,8 +509,6 @@ export function LaporanPage() {
                   <tbody>
                     {detail.map((m: Mutasi) => {
                       const bahan = bahanMap.get(m.bahanId)
-                      const harga =
-                        m.hargaSatuan ?? stok.get(m.bahanId)?.hargaRataRata ?? 0
                       return (
                         <tr key={m.id}>
                           <td className="whitespace-nowrap text-xs text-muted">
@@ -480,9 +534,6 @@ export function LaporanPage() {
                               {bahan?.satuan}
                             </span>
                           </td>
-                          <td className="text-right text-xs whitespace-nowrap text-ink">
-                            {formatRupiah(m.jumlah * harga)}
-                          </td>
                           <td className="max-w-56 truncate text-xs text-mocha">
                             {m.keterangan || '—'}
                           </td>
@@ -500,9 +551,9 @@ export function LaporanPage() {
 
           <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-muted">
             <IconInfo className="mt-0.5 size-3.5 shrink-0" />
-            Nilai keluar dihitung sebagai estimasi memakai harga rata-rata
-            pembelian per bahan. Stok akhir adalah akumulasi seluruh mutasi
-            sampai tanggal akhir periode.
+            Stok akhir adalah akumulasi seluruh mutasi sampai tanggal akhir
+            periode. Penjualan otomatis tercatat sebagai mutasi keluar sesuai
+            resep menu. Laporan ini hanya menampilkan jumlah, bukan nilai uang.
           </p>
 
           <div className="mt-6 hidden text-[10px] text-muted print:block">

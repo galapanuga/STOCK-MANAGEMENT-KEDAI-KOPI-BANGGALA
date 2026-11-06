@@ -15,7 +15,7 @@ import {
 import { BadgeStok } from '../components/ui/Badge'
 import { ConfirmDialog, Modal } from '../components/ui/Modal'
 import { EmptyState, Field, PageHeader } from '../components/ui/Field'
-import { formatAngka, formatRupiah } from '../lib/format'
+import { formatAngka } from '../lib/format'
 import { keDesimal } from '../lib/id'
 
 const GAYA_BAR: Record<StatusStok, string> = {
@@ -59,10 +59,9 @@ export function BahanPage() {
       })
   }, [cari, db.bahan, kategori, status, stok, tampilArsip])
 
-  const totalNilai = daftar.reduce(
-    (total, b) => total + (stok.get(b.id)?.nilai ?? 0),
-    0,
-  )
+  const jumlahMenipis = daftar.filter(
+    (b) => (stok.get(b.id)?.status ?? 'aman') !== 'aman',
+  ).length
 
   const bukaTambah = () => {
     setDiedit(null)
@@ -94,7 +93,7 @@ export function BahanPage() {
     <div className="animate-rise">
       <PageHeader
         judul="Bahan & Stok"
-        deskripsi="Kelola daftar bahan kedai beserta stok minimum dan nilai persediaannya."
+        deskripsi="Kelola daftar bahan kedai, stok minimum, dan pantau persediaan tanpa perhitungan uang."
         aksi={
           <button className="btn btn-primary" onClick={bukaTambah}>
             <IconPlus className="size-4" />
@@ -157,7 +156,9 @@ export function BahanPage() {
           </span>
           <span>
             Nilai tampil:{' '}
-            <b className="text-coffee">{formatRupiah(totalNilai)}</b>
+            <b className="text-coffee">
+              {jumlahMenipis > 0 ? `${jumlahMenipis} perlu restock` : 'stok aman'}
+            </b>
           </span>
         </div>
 
@@ -178,14 +179,12 @@ export function BahanPage() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="table-banggala min-w-[900px]">
+            <table className="table-banggala min-w-[720px]">
               <thead>
                 <tr>
                   <th>Bahan</th>
                   <th>Stok Saat Ini</th>
                   <th className="text-right">Stok Min.</th>
-                  <th className="text-right">Harga Rata-rata</th>
-                  <th className="text-right">Nilai</th>
                   <th>Status</th>
                   <th className="text-right">Aksi</th>
                 </tr>
@@ -222,13 +221,6 @@ export function BahanPage() {
                       </td>
                       <td className="text-right text-xs whitespace-nowrap text-muted">
                         {formatAngka(b.stokMin)} {b.satuan}
-                      </td>
-                      <td className="text-right text-xs whitespace-nowrap text-mocha">
-                        {formatRupiah(info.hargaRataRata)}
-                        <span className="text-[10px] text-muted">/{b.satuan}</span>
-                      </td>
-                      <td className="text-right text-xs font-semibold whitespace-nowrap text-ink">
-                        {formatRupiah(info.nilai)}
                       </td>
                       <td>
                         <BadgeStok status={info.status} />
@@ -323,7 +315,6 @@ function BahanModal({
   const [satuan, setSatuan] = useState('')
   const [stokMin, setStokMin] = useState('0')
   const [stokAwal, setStokAwal] = useState('')
-  const [hargaAwal, setHargaAwal] = useState('')
   const [galat, setGalat] = useState('')
 
   useEffect(() => {
@@ -341,7 +332,6 @@ function BahanModal({
       setStokMin('0')
     }
     setStokAwal('')
-    setHargaAwal('')
   }, [buka, bahan, db.pengaturan.kategoriBahan, db.pengaturan.satuanBahan])
 
   const kategoriOpsi = useMemo(() => {
@@ -372,7 +362,6 @@ function BahanModal({
       satuan,
       stokMin: Math.max(0, keDesimal(stokMin)),
       stokAwal: bahan ? 0 : Math.max(0, keDesimal(stokAwal)),
-      hargaAwal: Math.max(0, keDesimal(hargaAwal)),
     })
   }
 
@@ -492,33 +481,6 @@ function BahanModal({
             </Field>
           )}
         </div>
-
-        {!bahan && (
-          <Field
-            label="Harga Satuan Awal (opsional)"
-            htmlFor="bahan-harga"
-            hint="Dipakai untuk menghitung nilai persediaan dan rata-rata harga beli."
-          >
-            <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs text-muted">
-                Rp
-              </span>
-              <input
-                id="bahan-harga"
-                type="number"
-                min={0}
-                step="any"
-                className="input pr-14 pl-9"
-                value={hargaAwal}
-                onChange={(e) => setHargaAwal(e.target.value)}
-                placeholder="0"
-              />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[11px] text-muted">
-                /{satuan || 'satuan'}
-              </span>
-            </div>
-          </Field>
-        )}
 
         {bahan && (
           <div className="rounded-xl border border-line bg-cream px-3.5 py-3 text-xs leading-relaxed text-muted">
