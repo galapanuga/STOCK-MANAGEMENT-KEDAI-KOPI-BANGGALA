@@ -42,14 +42,33 @@ async function panggil(body: AksiAdmin): Promise<ResponsEdge> {
 
   if (error) {
     // FunctionsHttpError menyimpan respons di context.
-    const konteks = (error as { context?: { json?: () => Promise<unknown> } }).context
-    if (konteks?.json) {
+    const konteks = (error as { context?: unknown }).context
+    if (
+      konteks &&
+      typeof konteks === 'object' &&
+      'json' in konteks &&
+      typeof konteks.json === 'function'
+    ) {
       try {
         const isi = (await konteks.json()) as ResponsEdge
         if (isi?.error) throw new Error(isi.error)
       } catch (err) {
         if (err instanceof Error && err.message) throw err
       }
+    }
+
+    // FunctionsFetchError keeps the browser's original fetch exception in
+    // `context`. Include only its type/message so network/CORS issues are not
+    // hidden behind the SDK's generic message. Never log request headers/body.
+    if (konteks instanceof Error) {
+      console.error('[Banggala Stock] Edge Function fetch failed:', {
+        name: error.name,
+        causeName: konteks.name,
+        causeMessage: konteks.message,
+      })
+      throw new Error(
+        `Gagal menghubungi server pengguna (${konteks.name}: ${konteks.message}). Periksa koneksi atau coba browser/jaringan lain.`,
+      )
     }
     throw new Error(error.message || 'Gagal menghubungi server pengguna.')
   }

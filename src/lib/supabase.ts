@@ -5,10 +5,10 @@ interface EnvConfig {
   VITE_SUPABASE_ANON_KEY?: string
 }
 
-const env: EnvConfig =
-  typeof import.meta !== 'undefined' && 'env' in import.meta
-    ? (import.meta.env as unknown as EnvConfig)
-    : {}
+// Vite replaces `import.meta.env` at build time. Testing for an `env` property
+// on `import.meta` first can fail in production browsers and silently select
+// the local-only fallback even when the build contains the configured values.
+const env = import.meta.env as unknown as EnvConfig
 
 const rawUrl = env.VITE_SUPABASE_URL
 const rawAnonKey = env.VITE_SUPABASE_ANON_KEY

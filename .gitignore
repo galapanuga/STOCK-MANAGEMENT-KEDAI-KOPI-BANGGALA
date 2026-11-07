@@ -12,3 +12,5 @@ dist
 qa-sementara.mjs
 qa-browser.mjs
 qa-browser.png
+.vercel
+supabase/.temp/
