@@ -16,8 +16,8 @@ import {
   IconUsers,
   IconX,
 } from './Icons'
+import { StatusKoneksi } from './StatusKoneksi'
 import { formatTanggalPanjang, sapaan } from '../lib/format'
-
 const JUDUL_HALAMAN: Record<string, string> = {
   '/': 'Dashboard',
   '/bahan': 'Bahan & Stok',
@@ -191,7 +191,7 @@ export function Layout() {
             </div>
           </div>
           <p className="mt-3 px-1 text-center text-[10px] text-latte/35">
-            Data tersimpan lokal di perangkat ini
+            Hybrid Offline-First · Sinkronisasi Real-Time
           </p>
         </div>
       </aside>
@@ -215,8 +215,9 @@ export function Layout() {
               </p>
             </div>
           </div>
-          <div className="hidden items-center gap-3 sm:flex">
-            <div className="text-right">
+          <div className="flex items-center gap-3">
+            <StatusKoneksi />
+            <div className="hidden text-right sm:block">
               <p className="text-[10px] font-semibold tracking-wide text-muted uppercase">
                 {sapaan()}
               </p>
@@ -224,7 +225,7 @@ export function Layout() {
                 {formatTanggalPanjang(new Date())}
               </p>
             </div>
-            <div className="grid size-9 place-items-center rounded-full bg-espresso text-[11px] font-bold text-cream">
+            <div className="hidden size-9 place-items-center rounded-full bg-espresso text-[11px] font-bold text-cream sm:grid">
               {inisial(user?.nama ?? '?')}
             </div>
           </div>

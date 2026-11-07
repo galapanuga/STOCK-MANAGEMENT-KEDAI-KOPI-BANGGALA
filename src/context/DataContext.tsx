@@ -28,7 +28,41 @@ import { kebutuhanBahan, menuTanpaResep, periksaKetersediaan } from '../lib/menu
 import { buatDatabaseAwal } from '../lib/seed'
 import { normalisasiDB } from '../lib/storage'
 import { useAuth } from './AuthContext'
+import {
+  hapusBahanCloud,
+  hapusMenuCloud,
+  hapusMutasiCloud,
+  hapusPenggunaCloud,
+  hapusPenjualanCloud,
+  migrasiSemuaKeCloud,
+  simpanBahanCloud,
+  simpanLogCloud,
+  simpanMenuCloud,
+  simpanMutasiCloud,
+  simpanPengaturanCloud,
+  simpanPenggunaCloud,
+  simpanPenjualanCloud,
+} from '../lib/cloudDb'
+import { antrekanAksi, type OutboxAksi } from '../lib/outboxQueue'
+import { apakahSupabaseAktif } from '../lib/supabase'
 
+function kirimAtauAntrekan(
+  aksi: OutboxAksi,
+  tipeOperasi: 'insert' | 'update' | 'delete',
+  payload: unknown,
+  fnCloud: () => Promise<void>,
+) {
+  if (!apakahSupabaseAktif) return
+
+  if (typeof navigator !== 'undefined' && navigator.onLine) {
+    fnCloud().catch((err) => {
+      console.warn(`[CloudSync] Gagal mengirim langsung (${aksi}), masuk antrean:`, err)
+      antrekanAksi({ aksi, tipeOperasi, payload }).catch(console.error)
+    })
+  } else {
+    antrekanAksi({ aksi, tipeOperasi, payload }).catch(console.error)
+  }
+}
 export interface InputBahan {
   nama: string
   kategori: string
@@ -304,6 +338,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
+      kirimAtauAntrekan('bahan', 'insert', { bahan: bahanBaru, log }, () =>
+        simpanBahanCloud(bahanBaru, log),
+      )
+      if (mutasiBaru) {
+        kirimAtauAntrekan('mutasi', 'insert', { mutasi: mutasiBaru }, () =>
+          simpanMutasiCloud(mutasiBaru),
+        )
+      }
+
       return bahanBaru
     },
     [buatLog, db.bahan, setDb, user],
@@ -347,6 +390,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      const bahanDiperbarui: Bahan = {
+        ...lama,
+        nama,
+        kategori: input.kategori.trim() || 'Lainnya',
+        satuan: input.satuan.trim(),
+        stokMin: input.stokMin,
+      }
+      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log }, () =>
+        simpanBahanCloud(bahanDiperbarui, log),
+      )
     },
     [buatLog, db.bahan, setDb],
   )
@@ -367,6 +421,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      const bahanDiperbarui: Bahan = { ...bahan, arsip }
+      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log }, () =>
+        simpanBahanCloud(bahanDiperbarui, log),
+      )
     },
     [buatLog, db.bahan, setDb],
   )
@@ -431,6 +490,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
+      kirimAtauAntrekan('mutasi', 'insert', { mutasi, log }, () =>
+        simpanMutasiCloud(mutasi, log),
+      )
+
       return mutasi
     },
     [buatLog, setDb, user, validasiMutasi],
@@ -470,10 +533,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      const mutasiDiperbarui: Mutasi = {
+        ...lama,
+        bahanId: input.bahanId,
+        tipe: input.tipe,
+        jumlah: input.jumlah,
+        alasan: input.alasan?.trim() || undefined,
+        keterangan: input.keterangan?.trim() || undefined,
+        tanggal: input.tanggal || lama.tanggal,
+      }
+      kirimAtauAntrekan('mutasi', 'update', { mutasi: mutasiDiperbarui, log }, () =>
+        simpanMutasiCloud(mutasiDiperbarui, log),
+      )
     },
     [buatLog, db.mutasi, setDb, validasiMutasi],
   )
-
   const hapusMutasi = useCallback(
     (id: string) => {
       const lama = db.mutasi.find((m) => m.id === id)
@@ -494,6 +569,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      kirimAtauAntrekan('hapus_mutasi', 'delete', { id, log }, () =>
+        hapusMutasiCloud(id, log),
+      )
     },
     [buatLog, db.bahan, db.mutasi, setDb],
   )
@@ -546,6 +625,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
             }
           : prev,
       )
+
+      kirimAtauAntrekan('menu', 'insert', { menu: menuBaru, log }, () =>
+        simpanMenuCloud(menuBaru, log),
+      )
       return menuBaru
     },
     [buatLog, setDb, validasiMenu],
@@ -565,6 +648,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
               log: [log, ...prev.log].slice(0, 250),
             }
           : prev,
+      )
+
+      const menuDiperbarui: Menu = { ...lama, ...data }
+      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log }, () =>
+        simpanMenuCloud(menuDiperbarui, log),
       )
     },
     [buatLog, db.menu, setDb, validasiMenu],
@@ -586,6 +674,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
               log: [log, ...prev.log].slice(0, 250),
             }
           : prev,
+      )
+
+      const menuDiperbarui: Menu = { ...menu, arsip }
+      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log }, () =>
+        simpanMenuCloud(menuDiperbarui, log),
       )
     },
     [buatLog, db.menu, setDb],
@@ -636,6 +729,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
               log: [log, ...prev.log].slice(0, 250),
             }
           : prev,
+      )
+
+      kirimAtauAntrekan(
+        'penjualan',
+        'insert',
+        { penjualan, mutasiList: hasil.mutasi, log },
+        () => simpanPenjualanCloud(penjualan, hasil.mutasi, log),
       )
 
       return penjualan
@@ -696,6 +796,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
             }
           : prev,
       )
+
+      kirimAtauAntrekan(
+        'penjualan',
+        'update',
+        { penjualan, mutasiList: hasil.mutasi, log },
+        () => simpanPenjualanCloud(penjualan, hasil.mutasi, log),
+      )
     },
     [buatLog, db, setDb, user],
   )
@@ -720,6 +827,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
               log: [log, ...prev.log].slice(0, 250),
             }
           : prev,
+      )
+
+      kirimAtauAntrekan('hapus_penjualan', 'delete', { id, log }, () =>
+        hapusPenjualanCloud(id, log),
       )
     },
     [buatLog, db.penjualan, setDb, user],
@@ -765,6 +876,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      kirimAtauAntrekan('pengguna', 'insert', { user: baru, log }, () =>
+        simpanPenggunaCloud(baru, log),
+      )
     },
     [buatLog, db.users, setDb],
   )
@@ -819,6 +934,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      const userDiperbarui: User = {
+        ...target,
+        nama: patch.nama?.trim() ?? target.nama,
+        role: patch.role ?? target.role,
+        aktif: patch.aktif ?? target.aktif,
+      }
+      kirimAtauAntrekan('pengguna', 'update', { user: userDiperbarui, log }, () =>
+        simpanPenggunaCloud(userDiperbarui, log),
+      )
     },
     [buatLog, db.users, setDb, user],
   )
@@ -846,6 +971,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
+
+      const userDiperbarui: User = {
+        ...target,
+        salt,
+        passwordHash: hash,
+        passwordChangedAt: sekarang,
+      }
+      kirimAtauAntrekan('pengguna', 'update', { user: userDiperbarui, log }, () =>
+        simpanPenggunaCloud(userDiperbarui, log),
+      )
     },
     [buatLog, db.users, setDb],
   )
@@ -862,10 +997,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
             }
           : prev,
       )
-    },
-    [buatLog, setDb],
-  )
 
+      const pengaturanBaru: Pengaturan = { ...db.pengaturan, ...patch }
+      kirimAtauAntrekan('pengaturan', 'update', { pengaturan: pengaturanBaru, log }, () =>
+        simpanPengaturanCloud(pengaturanBaru, log),
+      )
+    },
+    [buatLog, db.pengaturan, setDb],
+  )
   const tambahKategori = useCallback(
     (nama: string) => {
       const bersih = nama.trim()
@@ -939,10 +1078,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (operatorId && !hasil.users.some((u) => u.id === operatorId)) {
         logout()
       }
+      if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
+        migrasiSemuaKeCloud(hasil).catch(console.error)
+      }
     },
     [logout, setDb, user],
   )
-
   const resetStok = useCallback(async () => {
     const seed = await buatDatabaseAwal()
     const log = buatLog(
@@ -961,7 +1102,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
           }
         : prev,
     )
-  }, [buatLog, setDb])
+    if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
+      const resetDb: DB = {
+        ...db,
+        bahan: seed.bahan,
+        mutasi: seed.mutasi,
+        menu: seed.menu,
+        penjualan: seed.penjualan,
+        log: [log, ...db.log].slice(0, 250),
+      }
+      migrasiSemuaKeCloud(resetDb).catch(console.error)
+    }
+  },
+  [buatLog, db, setDb],
+)
 
   const catatLog = useCallback(
     (aksi: string, detail: string) => {
@@ -971,10 +1125,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? { ...prev, log: [log, ...prev.log].slice(0, 250) }
           : prev,
       )
+      if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
+        simpanLogCloud(log).catch(console.error)
+      }
     },
     [buatLog, setDb],
   )
-
   const nilai = useMemo<DataContextValue>(
     () => ({
       db,

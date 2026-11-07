@@ -1,55 +1,111 @@
-# Banggala Stock v2
+# Banggala Stock
 
 Sistem pencatatan **stok bahan**, **menu & resep**, dan **penjualan** untuk **Kedai Kopi Banggala**.
-Aplikasi web lokal (berjalan di browser) — **tanpa server/database eksternal**, seluruh data di `localStorage`.
+Aplikasi web multi-perangkat berbasis **Supabase Cloud (PostgreSQL + Realtime WebSocket)** dengan arsitektur **Hybrid Offline-First**. Kasir di kedai tetap dapat mencatat penjualan saat internet putus sementara melalui antrean sinkronisasi lokal (IndexedDB outbox queue), sementara pemilik dapat memantau pergerakan stok dan transaksi secara real-time dari perangkat mana pun.
 
 Fokus **stok saja**: tidak ada perhitungan harga, HPP, omzet, laba, atau margin. Penjualan mencatat item + jumlah dan otomatis memotong stok bahan sesuai resep.
 
 ---
 
-## Fitur
+## Fitur Utama
 
 | Modul | Deskripsi |
 |-------|-----------|
-| **Login** | Multi-user (Admin / Staf). Password di-hash PBKDF2 (SHA-256, salt per akun). |
-| **Dashboard** | Status buka/tutup (WIB), statistik bahan/penjualan/mutasi hari ini, grafik 7 hari, daftar restock, transaksi terbaru. |
-| **Bahan & Stok** | Tambah/ubah/arsip bahan; kategori & satuan kustom; stok minimum; status (Aman / Menipis / Habis). **Tanpa kolom harga/nilai.** |
-| **Menu & Resep** | 28 menu katalog Kedai Kopi Banggala (dari web profil) + resep **estimasi** yang bisa diedit; menu tanpa resep boleh dijual (stok tidak terpotong, diberi peringatan); Export CSV. |
-| **Penjualan** | Catat multi-item; **validasi stok real-time** (tolak jika tidak cukup); nomor otomatis `PJ-YYYYMMDD-XXX`; Admin bisa edit/hapus → stok dihitung ulang. |
-| **Mutasi Stok** | Masuk/keluar manual (pembelian, rusak, sample, koreksi, dsb); validasi stok tidak negatif; tanpa harga satuan. |
-| **Laporan** | Periode preset/kustom; ringkasan per bahan (stok awal → masuk → keluar → akhir); rekap menu terjual (qty + jumlah transaksi); detail mutasi; **Export 3 CSV** (ringkasan, detail, penjualan); **Cetak** (A4 landscape, tanpa tombol). |
-| **Pengaturan** | Identitas kedai (nama, tagline, alamat, kota, tanggal berdiri, ID Halal, IG, TikTok, Maps, GoFood, GrabFood, situs profil — **tanpa telepon**); Jam operasional per hari (WIB, Jumat libur default); Kategori & satuan bahan/menu; Keamanan akun (ubah password); **Backup/Restore JSON**; Reset data operasional; Log aktivitas 25 terbaru. |
-| **Responsif** | Desktop, tablet, HP. Print-friendly. |
+| **Multi-Perangkat & Realtime** | Terhubung ke cloud database Supabase; perubahan stok dan transaksi tersinkronisasi otomatis antar-perangkat secara instan via WebSocket. |
+| **Hybrid Offline-First** | Startup instan (< 50ms) dari cache lokal browser; transaksi offline tersimpan di antrean IndexedDB (`banggala_outbox_db`) dan otomatis terkirim saat internet pulih. |
+| **Indikator Koneksi** | Status koneksi di navbar: 🟢 *Online (Tersinkron)*, 🟡 *Offline (N Tertunda)*, 🔄 *Menyinkronkan…*, atau ⚪ *Mode Lokal*. |
+| **Migrasi 1-Klik** | Tombol di Pengaturan untuk memindahkan seluruh data katalog, bahan, stok, dan riwayat transaksi lokal ke database Supabase Cloud. |
+| **Login & Keamanan** | Multi-user (Admin / Staf). Password di-hash aman dengan algoritma PBKDF2 (SHA-256, salt per akun). |
+| **Dashboard** | Status buka/tutup kedai (WIB), statistik bahan/penjualan/mutasi hari ini, grafik 7 hari, daftar restock, transaksi terbaru. |
+| **Bahan & Stok** | Tambah/ubah/arsip bahan; kategori & satuan kustom; stok minimum; status stok (Aman / Menipis / Habis). |
+| **Menu & Resep** | 28 menu katalog Kedai Kopi Banggala + resep estimasi yang bisa diedit; menu tanpa resep boleh dijual (stok tidak terpotong, diberi peringatan); Export CSV. |
+| **Penjualan** | Catat multi-item; validasi stok real-time (tolak jika tidak cukup); nomor otomatis `PJ-YYYYMMDD-XXX`; Admin bisa edit/hapus → stok dihitung ulang. |
+| **Mutasi Stok** | Masuk/keluar manual (pembelian, rusak, sample, koreksi, dsb); validasi stok tidak negatif. |
+| **Laporan** | Periode preset/kustom; ringkasan per bahan; rekap menu terjual; detail mutasi; Export 3 CSV (titik koma); Cetak (A4 landscape). |
+| **Pengaturan & Backup** | Identitas kedai; jam operasional mingguan; keamanan akun; Backup/Restore JSON; Reset data operasional; Log aktivitas audit. |
 
 ---
 
-## Menjalankan
+## Konfigurasi Supabase Cloud
+
+Aplikasi dapat dijalankan dalam **Mode Lokal** (tanpa konfigurasi apa pun) atau dalam **Mode Cloud Multi-Perangkat** menggunakan Supabase BaaS (tersedia tier gratis).
+
+### 1. Buat Proyek di Supabase
+1. Buka [supabase.com](https://supabase.com) dan buat proyek baru (misal: `banggala-stock`).
+2. Tentukan password basis data dan pilih region terdekat (misal: `Singapore`).
+
+### 2. Jalankan Skema SQL Basis Data
+1. Di dashboard Supabase, buka menu **SQL Editor**.
+2. Buka file [`supabase/schema.sql`](supabase/schema.sql) dari repositori ini, salin seluruh kodenya, dan tempelkan ke SQL Editor Supabase.
+3. Klik tombol **Run**. Seluruh tabel (`pengaturan`, `pengguna`, `bahan`, `menu`, `mutasi`, `penjualan`, `log_aktivitas`), indeks, kebijakan RLS, dan publikasi Realtime akan dibuat otomatis.
+
+### 3. Salin API Credentials
+1. Buka **Project Settings** → **API**.
+2. Salin **Project URL** dan **Project API Keys** (`anon` public key).
+
+---
+
+## Menjalankan di Komputer Lokal
 
 Prasyarat: **Node.js 20+** dan npm.
 
+### 1. Salin File Environment
+```bash
+cp .env.example .env
+```
+Buka file `.env` dan isi dengan kredensial Supabase Anda:
+```env
+VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+*(Catatan: Jika `.env` dibiarkan kosong atau belum diisi, aplikasi otomatis berjalan dalam mode demo offline-lokal).*
+
+### 2. Instalasi & Menjalankan Server Dev
 ```bash
 npm install
 npm run dev
 ```
+Buka <http://localhost:5173> di browser.
 
-Buka <http://localhost:5173> (atau port yang ditampilkan Vite).
-
-### Akun awal
-
+### 3. Akun Awal
 | Username | Password   | Role  |
 | -------- | ---------- | ----- |
 | `admin`  | `admin123` | Admin |
 
 > Segera ubah password lewat **Pengaturan → Keamanan Akun** setelah login pertama.
 
-### Build produksi
+### 4. Migrasi Data Lokal ke Cloud (1-Klik)
+Jika Anda memiliki data katalog atau transaksi di browser lokal dan ingin mengunggahnya ke Supabase:
+1. Masuk sebagai akun **Admin**.
+2. Masuk ke halaman **Pengaturan** → bagian **Data & Backup**.
+3. Di kartu **Supabase Cloud Database**, klik tombol **"Migrasikan Data Lokal ke Cloud"**.
+4. Tunggu progress bar selesai (100%). Seluruh data lokal kini aktif di Supabase dan siap diakses dari perangkat lain!
 
-```bash
-npm run build     # type-check + build ke folder dist/
-npm run preview   # menjalankan hasil build di http://localhost:4173
-```
+---
 
-Hasil build bisa di-host di hosting statis apa pun. Aplikasi memakai `HashRouter`, tidak butuh rewrite URL.
+## Deployment ke Cloud (Vercel / Cloudflare Pages)
+
+Aplikasi dibangun menggunakan **HashRouter** (`/#/`), sehingga dapat di-deploy ke platform hosting statis apa pun tanpa memerlukan konfigurasi URL rewrite server.
+
+### Deploy ke Vercel
+1. Hubungkan repositori GitHub ke [vercel.com](https://vercel.com).
+2. Konfigurasi proyek:
+   - **Framework Preset**: Vite
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+3. Tambahkan **Environment Variables**:
+   - `VITE_SUPABASE_URL` = `https://your-project.supabase.co`
+   - `VITE_SUPABASE_ANON_KEY` = `your-anon-key`
+4. Klik **Deploy**.
+
+### Deploy ke Cloudflare Pages
+1. Di dashboard Cloudflare Pages, pilih **Create a project** → **Connect to Git**.
+2. Konfigurasi build:
+   - **Framework preset**: None / Vite
+   - **Build command**: `npm run build`
+   - **Build output directory**: `dist`
+3. Di bagian **Environment variables**, tambahkan `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY`.
+4. Klik **Save and Deploy**.
 
 ---
 
@@ -60,67 +116,39 @@ Hasil build bisa di-host di hosting statis apa pun. Aplikasi memakai `HashRouter
 | Dashboard, stok, laporan | ✓ | ✓ |
 | Catat stok masuk/keluar | ✓ | ✓ |
 | Tambah/ubah bahan & menu | ✓ | ✓ |
+| Catat transaksi penjualan | ✓ | ✓ |
 | Arsipkan bahan/menu | ✓ | – |
 | Ubah/hapus mutasi manual | ✓ | – |
 | **Edit/hapus penjualan** | ✓ | – |
-| Kelola pengguna | ✓ | – |
-| Pengaturan, backup, reset | ✓ | – |
+| Kelola pengguna & staf | ✓ | – |
+| Pengaturan kedai, migrasi cloud, reset data | ✓ | – |
 
 ---
 
-## Alur Pemakaian Disarankan
+## Arsitektur Hybrid Offline-First
 
-1. **Pengaturan** — isi identitas kedai, sesuaikan jam operasional, kategori & satuan.
-2. **Menu & Resep** — periksa 28 menu katalog, sesuaikan resep estimasi ke praktik dapur.
-3. **Bahan & Stok** — tambahkan bahan jika perlu; catat **stok awal** via form tambah bahan (otomatis mutasi masuk).
-4. **Penjualan** — catat transaksi harian; stok otomatis terpotong.
-5. **Dashboard** — pantau bahan perlu restock & status buka/tutup real-time.
-6. **Laporan** — pilih periode, export CSV, atau cetak untuk arsip.
-7. **Pengaturan → Data & Backup** — unduh backup JSON secara rutin.
+```
+┌────────────────────────────────────────────────────────┐
+│                   Aplikasi React UI                   │
+│  (Optimistic Update seketika: State memori + Storage)  │
+└───────────────┬────────────────────────┬───────────────┘
+                │                        │
+       [Jika Online]               [Jika Offline]
+                │                        │
+                ▼                        ▼
+     ┌─────────────────────┐   ┌──────────────────────┐
+     │   Supabase Client   │   │  IndexedDB Outbox    │
+     │  (Postgres Cloud)   │   │ (banggala_outbox_db) │
+     └──────────▲──────────┘   └──────────┬───────────┘
+                │                         │
+                │        Auto Sync saat   │
+                └──────── koneksi pulih ──┘
+```
 
----
-
-## Perhitungan Stok
-
-- **Stok saat ini** = Σ mutasi masuk − Σ mutasi keluar (seluruh waktu). Stok **tidak disimpan terpisah**, selalu konsisten dengan riwayat.
-- **Status stok**:
-  - `Habis` &nbsp;&nbsp; jika stok ≤ 0
-  - `Menipis` jika 0 < stok ≤ stok minimum
-  - `Aman` &nbsp;&nbsp;&nbsp; jika stok > stok minimum
-- **Penjualan** memotong stok: Σ (resep per item × jumlah terjual).
-- Menu **tanpa resep** boleh dicatat tapi **stok tidak dipotong** (ditandai “Sebagian” pada tabel).
-- **Edit/hapus penjualan (admin)**: mutasi keluar lama dihapus, stok dihitung ulang dari histori bersih.
-- Laporan ringkasan: `stokAkhir = stokAwal + masuk − keluar` pada periode.
-
----
-
-## Penyimpanan Data & Backup
-
-- Key localStorage: **`banggala_db_v1`** (nama sama v1 agar migrasi transparan).
-- Data **melekat pada browser/perangkat**. Buka di HP lain = database terpisah.
-- **Hapus data situs/browser = hapus seluruh catatan.** Backup rutin lewat **Pengaturan → Data & Backup → Unduh backup JSON**.
-- Restore menimpa seluruh data dengan isi file backup.
-- Dirancang untuk pemakaian lokal di satu komputer kedai, **bukan diekspos ke internet**.
-- Sesi login bertahan 12 jam.
-
-### Lupa password admin
-
-Pulihkan backup yang masih punya akses, atau — jika tidak ada — hapus key `banggala_db_v1` di DevTools → Application → Local Storage (data kembali ke contoh awal, **seluruh catatan hilang**).
-
----
-
-## Migrasi dari v1 (Otomatis)
-
-Saat membuka aplikasi v2 dengan data v1 di localStorage:
-
-1. **Pengaturan**: field `telepon` dibuang; field lain dipertahankan; jam operasional default terisi jika kosong.
-2. **Katalog v2 ditambahkan**: 36 bahan & 28 menu web profil dimasukkan jika belum ada. Data bahan/menu lama **tidak dihapus**.
-3. **Stok awal migrasi**: hanya bahan **baru** dari katalog v2 mendapat mutasi masuk sesuai seed pembelian. Bahan lama **tidak** mendapat stok ganda.
-4. **Mutasi & penjualan lama utuh**: seluruh riwayat mutasi (termasuk harga satuan warisan) dan transaksi penjualan (termasuk omzet/HPP/laba warisan) **dipertahankan** di storage, tapi **tidak ditampilkan** di UI.
-5. **Item penjualan lama** tanpa snapshot nama dilengkapi otomatis dari katalog menu.
-6. **Idempoten**: menjalankan migrasi berkali-kali tidak menggandakan data.
-
-> Kolom warisan uang (`hargaSatuan` di mutasi, `harga`/`hppSatuan` di item penjualan, `omzet/hpp/laba` di penjualan, `harga` di menu, `hargaRataRata/nilai` di StokInfo) **masih ada di schema** agar backup lama valid, tapi **tidak pernah dibaca/ditampilkan** di v2.
+1. **Local-First Speed**: Setiap pencatatan penjualan atau mutasi stok langsung memperbarui tampilan antarmuka seketika tanpa menunggu latensi jaringan server.
+2. **Resilience**: Jika internet kedai mati, transaksi masuk ke antrean IndexedDB (`banggala_outbox_db`) dan ditandai dengan badge *Offline (N Tertunda)* di navbar.
+3. **Auto Recovery**: Begitu koneksi internet tersambung kembali (`online` event), antrean outbox secara otomatis dikirim berurutan (FIFO) ke Supabase dan navbar kembali hijau *Online (Tersinkron)*.
+4. **Realtime Multi-Device**: Menggunakan Supabase Realtime channel WebSocket. Saat kasir mencatat transaksi di laptop kedai, pemilik yang membuka aplikasi di smartphone otomatis melihat mutasi stok terpotong tanpa perlu me-refresh halaman.
 
 ---
 
@@ -128,33 +156,42 @@ Saat membuka aplikasi v2 dengan data v1 di localStorage:
 
 ```
 .
+├─ .env.example              # Template variabel lingkungan Supabase
 ├─ index.html
 ├─ package.json
 ├─ vite.config.ts
 ├─ tsconfig.json
+├─ supabase/
+│  └─ schema.sql             # DDL PostgreSQL + RLS + Realtime Publication
 └─ src/
-   ├─ main.tsx              # entry point + provider
-   ├─ App.tsx               # routing (HashRouter)
-   ├─ styles.css            # tema Tailwind v4 + font lokal + gaya cetak
-   ├─ types.ts              # tipe data v2 (field uang opsional/legacy)
+   ├─ main.tsx               # Entry point
+   ├─ App.tsx                # HashRouter routing
+   ├─ styles.css             # Tema Tailwind CSS v4
+   ├─ types.ts               # Interface TypeScript
    ├─ context/
-   │  ├─ AuthContext.tsx    # sesi, login, ganti password
-   │  ├─ DataContext.tsx    # data kedai + seluruh aksi (stok-only)
-   │  └─ ToastContext.tsx   # notifikasi
+   │  ├─ AuthContext.tsx     # Hybrid startup, login PBKDF2, Supabase Realtime
+   │  ├─ DataContext.tsx     # Operasi data bisnis + sync cloud + outbox
+   │  └─ ToastContext.tsx    # Notifikasi toast
    ├─ lib/
-   │  ├─ seed.ts            # data contoh & inisialisasi v2
-   │  ├─ storage.ts         # localStorage + normalisasiDB (migrasi v1→v2)
-   │  ├─ auth.ts            # PBKDF2 + sesi
-   │  ├─ stock.ts           # hitungStok, ringkasanPeriode, aktivitasHarian, penjualanHarian
-   │  ├─ menu.ts            # kebutuhanBahan, periksaKetersediaan, rincianKebutuhan, menuTanpaResep
-   │  ├─ operasional.ts     # statusBukaSekarang (Asia/Jakarta), jadwal mingguan
-   │  ├─ dataAwal.ts        # katalog 28 menu + 36 bahan + seed penjualan/mutasi
-   │  ├─ format.ts          # format angka/tanggal (id-ID)
-   │  ├─ csv.ts             # export CSV (titik koma, BOM UTF-8) & JSON
-   │  └─ id.ts              # uid, keAngka, keDesimal, pangkas
+   │  ├─ supabase.ts         # Inisialisasi klien Supabase & graceful fallback
+   │  ├─ cloudDb.ts          # Lapisan konversi schema (snake_case ↔ camelCase)
+   │  ├─ outboxQueue.ts      # IndexedDB offline outbox queue & auto-processor
+   │  ├─ seed.ts             # Data inisialisasi awal
+   │  ├─ storage.ts          # Cache localStorage
+   │  ├─ auth.ts             # Enkripsi password PBKDF2
+   │  ├─ stock.ts            # Logika kalkulasi stok
+   │  ├─ menu.ts             # Logika resep & ketersediaan bahan
+   │  ├─ operasional.ts      # Jam operasional resmi kedai
+   │  ├─ dataAwal.ts         # 28 menu katalog & 36 bahan bawaan kedai
+   │  ├─ format.ts           # Format angka & tanggal Indonesia
+   │  ├─ csv.ts              # Ekspor CSV & JSON
+   │  └─ id.ts               # Generator ID acak aman
    ├─ components/
-   │  ├─ Layout.tsx, ProtectedRoute.tsx, Icons.tsx
-   │  └─ ui/                # Modal, Badge, Field, ConfirmDialog, dll.
+   │  ├─ Layout.tsx          # Shell navigasi & header bar
+   │  ├─ StatusKoneksi.tsx   # Indikator status koneksi online/offline/sync
+   │  ├─ ProtectedRoute.tsx  # Proteksi otentikasi rute
+   │  ├─ Icons.tsx           # Ikon SVG
+   │  └─ ui/                 # Komponen modal, form, badge
    └─ pages/
       ├─ LoginPage.tsx
       ├─ DashboardPage.tsx
@@ -164,36 +201,8 @@ Saat membuka aplikasi v2 dengan data v1 di localStorage:
       ├─ MutasiPage.tsx
       ├─ LaporanPage.tsx
       ├─ PenggunaPage.tsx
-      └─ PengaturanPage.tsx
+      └─ PengaturanPage.tsx  # Pengaturan kedai & kartu migrasi cloud
 ```
-
----
-
-## Catatan Teknis
-
-- **Font lokal** (bundled di `public/fonts/`): Epilogue (display), Plus Jakarta Sans (UI), Space Mono (angka/mono).
-- **Palet resmi**: `#190e09` (espresso), `#2a1810` (coffee), `#a66a1e` (caramel), `#f4bd65` (gold), `#fef8f4` (cream), `#f2ede9` (sand), `#e7ddd6` (line).
-- **Zona waktu**: Semua perhitungan jam operasional memakai **Asia/Jakarta (WIB)** via `Intl.DateTimeFormat`, bukan zona perangkat.
-- **Jam operasional default**: Senin–Kamis & Sabtu–Minggu 09.00–23.59, **Jumat libur**.
-- **CSV**: pemisah `;`, BOM UTF-8, langsung rapi di Excel Indonesia.
-- **Print laporan**: A4 landscape, header kedai + periode, footer pencetakan, tombol/navigasi disembunyikan via `.no-print`.
-- **Reset data** di Pengaturan: mengembalikan bahan, menu, penjualan, mutasi ke data contoh awal; **akun & identitas kedai dipertahankan**.
-
----
-
-## QA Otomatis (skrip sementara)
-
-```bash
-npx esbuild qa-sementara.ts --bundle --platform=node --format=esm --outfile=/tmp/qa.mjs && node /tmp/qa.mjs
-```
-
-Menguji:
-- Integritas seed (28 menu, 36 bahan, 3 penjualan seed, mutasi konsisten)
-- Stok non-negatif (akhir & berjalan kronologis)
-- Validitas resep (bahanId valid, jumlah > 0, tidak duplikat)
-- Penolakan stok tidak cukup (`periksaKetersediaan`)
-- Migrasi v1→v2 (data lama utuh, katalog v2 ditambah, stok awal hanya bahan baru, telepon dibuang, field uang warisan dipertahankan)
-- Status buka/tutup WIB (Senin–Kamis/Sabtu–Minggu 09.00–23.59, Jumat libur, komputasi `Asia/Jakarta`)
 
 ---
 

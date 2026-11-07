@@ -23,6 +23,8 @@ import {
   keTanggalInput,
 } from '../lib/format'
 import { namaHariIndo, URUTAN_HARI } from '../lib/operasional'
+import { apakahSupabaseAktif } from '../lib/supabase'
+import { migrasiSemuaKeCloud } from '../lib/cloudDb'
 
 export function PengaturanPage() {
   const { user, gantiPassword } = useAuth()
@@ -196,6 +198,44 @@ export function PengaturanPage() {
       toast.error(error instanceof Error ? error.message : 'Gagal mereset data.')
     } finally {
       setMemprosesReset(false)
+    }
+  }
+
+  const [konfirmasiMigrasi, setKonfirmasiMigrasi] = useState(false)
+  const [sedangMigrasi, setSedangMigrasi] = useState(false)
+  const [progresMigrasi, setProgresMigrasi] = useState(0)
+  const [pesanMigrasi, setPesanMigrasi] = useState('')
+
+  const jalankanMigrasiCloud = async () => {
+    if (!apakahSupabaseAktif) {
+      toast.error(
+        'Supabase belum dikonfigurasi. Atur VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY di file .env terlebih dahulu.',
+      )
+      return
+    }
+
+    setSedangMigrasi(true)
+    setProgresMigrasi(5)
+    setPesanMigrasi('Menghubungkan ke Supabase Cloud…')
+
+    try {
+      const hasil = await migrasiSemuaKeCloud(db, (pesan, persen) => {
+        setPesanMigrasi(pesan)
+        setProgresMigrasi(persen)
+      })
+
+      if (hasil.sukses) {
+        toast.sukses(hasil.pesan)
+      } else {
+        toast.error(hasil.pesan)
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Terjadi kesalahan saat migrasi.',
+      )
+    } finally {
+      setSedangMigrasi(false)
+      setKonfirmasiMigrasi(false)
     }
   }
 
@@ -493,6 +533,50 @@ export function PengaturanPage() {
             deskripsi="Seluruh data tersimpan di browser perangkat ini."
           />
           <div className="space-y-4 p-5">
+            {/* Kartu Migrasi Supabase Cloud */}
+            <div className="rounded-xl border border-line bg-cream/40 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-coffee">
+                    <span
+                      className={`size-2 rounded-full ${apakahSupabaseAktif ? 'bg-success' : 'bg-latte'}`}
+                    />
+                    Supabase Cloud Database
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted">
+                    {apakahSupabaseAktif
+                      ? 'Terhubung. Sinkronkan seluruh katalog menu, bahan baku, stok, dan riwayat transaksi ke cloud.'
+                      : 'Belum terhubung. Konfigurasikan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY di file .env.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={!apakahSupabaseAktif || sedangMigrasi}
+                  className="btn btn-primary btn-sm whitespace-nowrap"
+                  onClick={() => setKonfirmasiMigrasi(true)}
+                >
+                  {sedangMigrasi
+                    ? 'Memproses Migrasi…'
+                    : 'Migrasikan Data Lokal ke Cloud'}
+                </button>
+              </div>
+
+              {sedangMigrasi && (
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex justify-between text-[11px] font-semibold text-coffee">
+                    <span>{pesanMigrasi}</span>
+                    <span>{progresMigrasi}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-line">
+                    <div
+                      className="h-full bg-caramel transition-all duration-300"
+                      style={{ width: `${progresMigrasi}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-between gap-3 rounded-xl bg-cream px-4 py-3 text-xs">
               <span className="text-muted">
                 {db.users.length} akun · {db.bahan.length} bahan · {db.menu.length} menu ·{' '}
@@ -634,6 +718,22 @@ export function PengaturanPage() {
         bahaya
         onTutup={() => setCalonBackup(null)}
         onKonfirmasi={terapkanBackup}
+      />
+
+      <ConfirmDialog
+        buka={konfirmasiMigrasi}
+        judul="Migrasikan data lokal ke Supabase Cloud?"
+        pesan={
+          <>
+            Seluruh data lokal ({db.bahan.length} bahan, {db.menu.length} menu,{' '}
+            {db.penjualan.length} transaksi penjualan, dan {db.mutasi.length} riwayat mutasi stok)
+            akan disalin ke database Supabase Cloud. Data di cloud akan diperbarui dan diselaraskan
+            secara multi-perangkat.
+          </>
+        }
+        labelKonfirmasi={sedangMigrasi ? 'Memproses…' : 'Mulai Migrasi'}
+        onTutup={() => !sedangMigrasi && setKonfirmasiMigrasi(false)}
+        onKonfirmasi={jalankanMigrasiCloud}
       />
     </div>
   )
