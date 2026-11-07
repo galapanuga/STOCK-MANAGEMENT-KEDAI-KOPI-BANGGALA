@@ -142,10 +142,12 @@ export function MutasiPage() {
         deskripsi="Catat setiap bahan yang masuk dan keluar agar stok selalu akurat."
         aksi={
           <>
-            <button className="btn btn-outline" onClick={() => bukaTambah('keluar')}>
-              <IconArrowUp className="size-4" />
-              Stok Keluar
-            </button>
+            {user && (
+              <button className="btn btn-outline" onClick={() => bukaTambah('keluar')}>
+                <IconArrowUp className="size-4" />
+                Stok Keluar
+              </button>
+            )}
             <button className="btn btn-primary" onClick={() => bukaTambah('masuk')}>
               <IconArrowDown className="size-4" />
               Stok Masuk

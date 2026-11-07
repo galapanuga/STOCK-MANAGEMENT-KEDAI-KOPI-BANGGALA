@@ -13,12 +13,24 @@ import type {
   Role,
   User,
 } from '../types'
+import { PENGATURAN_RESMI } from './dataAwal'
 import { DB_VERSION } from './storage'
-import { supabase } from './supabase'
+import { DOMAIN_EMAIL, supabase } from './supabase'
 
 // ==============================================================================
 // TIPE ROW SUPABASE (SNAKE_CASE)
 // ==============================================================================
+
+export interface ProfilRow {
+  id: string
+  username: string
+  nama: string
+  role: Role
+  aktif: boolean
+  created_at: string
+  updated_at?: string
+  password_changed_at: string | null
+}
 
 export interface PengaturanRow {
   id: string
@@ -41,18 +53,6 @@ export interface PengaturanRow {
   updated_at?: string
 }
 
-export interface PenggunaRow {
-  id: string
-  username: string
-  nama: string
-  role: Role
-  password_hash: string
-  salt: string
-  aktif: boolean
-  created_at: string
-  password_changed_at: string | null
-}
-
 export interface BahanRow {
   id: string
   nama: string
@@ -61,18 +61,19 @@ export interface BahanRow {
   stok_min: number
   arsip: boolean
   created_at: string
+  updated_at?: string
 }
 
 export interface MenuRow {
   id: string
   nama: string
   kategori: string
-  harga: number | null
   deskripsi: string | null
   resep: ResepItem[]
   resep_estimasi: boolean
   arsip: boolean
   created_at: string
+  updated_at?: string
 }
 
 export interface MutasiRow {
@@ -80,7 +81,6 @@ export interface MutasiRow {
   bahan_id: string
   tipe: MutasiTipe
   jumlah: number
-  harga_satuan: number | null
   alasan: string | null
   keterangan: string | null
   tanggal: string
@@ -88,6 +88,7 @@ export interface MutasiRow {
   user_name: string
   penjualan_id: string | null
   created_at: string
+  updated_at?: string
 }
 
 export interface PenjualanRow {
@@ -95,14 +96,12 @@ export interface PenjualanRow {
   nomor: string
   tanggal: string
   items: ItemPenjualan[]
-  omzet: number | null
-  hpp: number | null
-  laba: number | null
   catatan: string | null
   stok_terpotong: boolean
   user_id: string
   user_name: string
   created_at: string
+  updated_at?: string
 }
 
 export interface LogAktivitasRow {
@@ -115,8 +114,21 @@ export interface LogAktivitasRow {
 }
 
 // ==============================================================================
-// MAPPER FUNGSI (DATABASE <-> TYPESCRIPT)
+// MAPPER (DATABASE <-> TYPESCRIPT)
 // ==============================================================================
+
+export function mapProfilFromRow(r: ProfilRow): User {
+  return {
+    id: r.id,
+    username: r.username,
+    nama: r.nama,
+    role: r.role,
+    email: `${r.username}@${DOMAIN_EMAIL}`,
+    aktif: Boolean(r.aktif),
+    createdAt: r.created_at,
+    passwordChangedAt: r.password_changed_at ?? undefined,
+  }
+}
 
 export function mapPengaturanFromRow(r: PengaturanRow): Pengaturan {
   return {
@@ -139,10 +151,7 @@ export function mapPengaturanFromRow(r: PengaturanRow): Pengaturan {
   }
 }
 
-export function mapPengaturanToRow(
-  p: Pengaturan,
-  id = 'utama',
-): PengaturanRow {
+export function mapPengaturanToRow(p: Pengaturan, id = 'utama'): PengaturanRow {
   return {
     id,
     nama_kedai: p.namaKedai,
@@ -161,34 +170,6 @@ export function mapPengaturanToRow(
     kategori_bahan: p.kategoriBahan,
     satuan_bahan: p.satuanBahan,
     kategori_menu: p.kategoriMenu,
-  }
-}
-
-export function mapPenggunaFromRow(r: PenggunaRow): User {
-  return {
-    id: r.id,
-    username: r.username,
-    nama: r.nama,
-    role: r.role,
-    passwordHash: r.password_hash,
-    salt: r.salt,
-    aktif: r.aktif,
-    createdAt: r.created_at,
-    passwordChangedAt: r.password_changed_at ?? undefined,
-  }
-}
-
-export function mapPenggunaToRow(u: User): PenggunaRow {
-  return {
-    id: u.id,
-    username: u.username,
-    nama: u.nama,
-    role: u.role,
-    password_hash: u.passwordHash,
-    salt: u.salt,
-    aktif: u.aktif,
-    created_at: u.createdAt,
-    password_changed_at: u.passwordChangedAt ?? null,
   }
 }
 
@@ -221,7 +202,6 @@ export function mapMenuFromRow(r: MenuRow): Menu {
     id: r.id,
     nama: r.nama,
     kategori: r.kategori,
-    harga: r.harga != null ? Number(r.harga) : undefined,
     deskripsi: r.deskripsi ?? undefined,
     resep: Array.isArray(r.resep) ? r.resep : [],
     resepEstimasi: Boolean(r.resep_estimasi),
@@ -235,7 +215,6 @@ export function mapMenuToRow(m: Menu): MenuRow {
     id: m.id,
     nama: m.nama,
     kategori: m.kategori,
-    harga: m.harga ?? null,
     deskripsi: m.deskripsi ?? null,
     resep: m.resep,
     resep_estimasi: m.resepEstimasi,
@@ -250,7 +229,6 @@ export function mapMutasiFromRow(r: MutasiRow): Mutasi {
     bahanId: r.bahan_id,
     tipe: r.tipe,
     jumlah: Number(r.jumlah),
-    hargaSatuan: r.harga_satuan != null ? Number(r.harga_satuan) : undefined,
     alasan: r.alasan ?? undefined,
     keterangan: r.keterangan ?? undefined,
     tanggal: r.tanggal,
@@ -267,7 +245,6 @@ export function mapMutasiToRow(m: Mutasi): MutasiRow {
     bahan_id: m.bahanId,
     tipe: m.tipe,
     jumlah: m.jumlah,
-    harga_satuan: m.hargaSatuan ?? null,
     alasan: m.alasan ?? null,
     keterangan: m.keterangan ?? null,
     tanggal: m.tanggal,
@@ -284,9 +261,6 @@ export function mapPenjualanFromRow(r: PenjualanRow): Penjualan {
     nomor: r.nomor,
     tanggal: r.tanggal,
     items: Array.isArray(r.items) ? r.items : [],
-    omzet: r.omzet != null ? Number(r.omzet) : undefined,
-    hpp: r.hpp != null ? Number(r.hpp) : undefined,
-    laba: r.laba != null ? Number(r.laba) : undefined,
     catatan: r.catatan ?? undefined,
     stokTerpotong: Boolean(r.stok_terpotong),
     userId: r.user_id,
@@ -301,9 +275,6 @@ export function mapPenjualanToRow(p: Penjualan): PenjualanRow {
     nomor: p.nomor,
     tanggal: p.tanggal,
     items: p.items,
-    omzet: p.omzet ?? null,
-    hpp: p.hpp ?? null,
-    laba: p.laba ?? null,
     catatan: p.catatan ?? null,
     stok_terpotong: p.stokTerpotong,
     user_id: p.userId,
@@ -335,268 +306,110 @@ export function mapLogToRow(l: LogAktivitas): LogAktivitasRow {
 }
 
 // ==============================================================================
-// OPERASI DATA CLOUD (SUPABASE)
+// BACA SNAPSHOT CLOUD
 // ==============================================================================
 
 /**
- * Mengambil seluruh database dari tabel Supabase.
- * Mengembalikan null jika Supabase belum aktif atau basis data cloud masih kosong.
+ * Mengambil seluruh database dari Supabase.
+ * `users` diisi dari tabel profiles (bukan lagi hash password).
+ * Mengembalikan null jika cloud masih kosong.
  */
 export async function muatDBSupabase(): Promise<DB | null> {
   if (!supabase) return null
 
-  const [
-    resPengaturan,
-    resPengguna,
-    resBahan,
-    resMenu,
-    resMutasi,
-    resPenjualan,
-    resLog,
-  ] = await Promise.all([
-    supabase.from('pengaturan').select('*').limit(1).maybeSingle(),
-    supabase.from('pengguna').select('*').order('created_at', { ascending: true }),
-    supabase.from('bahan').select('*').order('nama', { ascending: true }),
-    supabase.from('menu').select('*').order('nama', { ascending: true }),
-    supabase.from('mutasi').select('*').order('tanggal', { ascending: false }),
-    supabase.from('penjualan').select('*').order('tanggal', { ascending: false }),
-    supabase.from('log_aktivitas').select('*').order('at', { ascending: false }).limit(200),
-  ])
+  const [resPengaturan, resProfil, resBahan, resMenu, resMutasi, resPenjualan, resLog] =
+    await Promise.all([
+      supabase.from('pengaturan').select('*').limit(1).maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('id, username, nama, role, aktif, created_at, updated_at, password_changed_at')
+        .order('created_at', { ascending: true }),
+      supabase.from('bahan').select('*').order('nama', { ascending: true }),
+      supabase.from('menu').select('*').order('nama', { ascending: true }),
+      supabase.from('mutasi').select('*').order('tanggal', { ascending: false }),
+      supabase.from('penjualan').select('*').order('tanggal', { ascending: false }),
+      supabase.from('log_aktivitas').select('*').order('at', { ascending: false }).limit(200),
+    ])
 
   if (resPengaturan.error) {
     throw new Error(`Gagal memuat pengaturan cloud: ${resPengaturan.error.message}`)
   }
-  if (resPengguna.error) {
-    throw new Error(`Gagal memuat data pengguna cloud: ${resPengguna.error.message}`)
+  if (resProfil.error) {
+    throw new Error(`Gagal memuat profil pengguna: ${resProfil.error.message}`)
   }
   if (resBahan.error) {
-    throw new Error(`Gagal memuat data bahan cloud: ${resBahan.error.message}`)
+    throw new Error(`Gagal memuat bahan cloud: ${resBahan.error.message}`)
   }
   if (resMenu.error) {
-    throw new Error(`Gagal memuat katalog menu cloud: ${resMenu.error.message}`)
+    throw new Error(`Gagal memuat menu cloud: ${resMenu.error.message}`)
   }
   if (resMutasi.error) {
-    throw new Error(`Gagal memuat mutasi stok cloud: ${resMutasi.error.message}`)
+    throw new Error(`Gagal memuat mutasi cloud: ${resMutasi.error.message}`)
   }
   if (resPenjualan.error) {
-    throw new Error(`Gagal memuat riwayat penjualan cloud: ${resPenjualan.error.message}`)
+    throw new Error(`Gagal memuat penjualan cloud: ${resPenjualan.error.message}`)
   }
   if (resLog.error) {
-    throw new Error(`Gagal memuat log aktivitas cloud: ${resLog.error.message}`)
+    throw new Error(`Gagal memuat log cloud: ${resLog.error.message}`)
   }
 
-  // Jika tabel pengaturan belum diisi dan pengguna masih kosong, anggap belum diinisialisasi
-  if (!resPengaturan.data && (!resPengguna.data || resPengguna.data.length === 0)) {
-    return null
-  }
+  const kosong =
+    !resPengaturan.data &&
+    (resBahan.data?.length ?? 0) === 0 &&
+    (resMenu.data?.length ?? 0) === 0
 
-  const pengaturan: Pengaturan = resPengaturan.data
-    ? mapPengaturanFromRow(resPengaturan.data as PengaturanRow)
-    : {
-        namaKedai: 'Kedai Kopi Banggala',
-        tagline: 'Sedikit, tapi terus berjalan.',
-        alamat:
-          'Jl. Serbaguna, Jadimulya, Kec. Gunungjati, Kabupaten Cirebon, Jawa Barat 45151',
-        kota: 'Gunungjati, Cirebon',
-        tanggalBerdiri: '2024-01-15',
-        halalId: 'ID31410022479980525',
-        instagram: 'kedaikopibanggala',
-        tiktok: 'kopibanggala',
-        mapsUrl: 'https://maps.google.com/?q=Kedai+Kopi+Banggala+Gunungjati+Cirebon',
-        gofoodUrl: '',
-        grabfoodUrl: '',
-        situsUrl: 'https://kedaikopibanggala.vercel.app/',
-        jamOperasional: {} as JamOperasional,
-        kategoriBahan: [],
-        satuanBahan: [],
-        kategoriMenu: [],
-      }
+  if (kosong) return null
 
   return {
     version: DB_VERSION,
-    pengaturan,
-    users: (resPengguna.data as PenggunaRow[]).map(mapPenggunaFromRow),
-    bahan: (resBahan.data as BahanRow[]).map(mapBahanFromRow),
-    menu: (resMenu.data as MenuRow[]).map(mapMenuFromRow),
-    mutasi: (resMutasi.data as MutasiRow[]).map(mapMutasiFromRow),
-    penjualan: (resPenjualan.data as PenjualanRow[]).map(mapPenjualanFromRow),
-    log: (resLog.data as LogAktivitasRow[]).map(mapLogFromRow),
+    // Bila baris pengaturan belum pernah dibuat (mis. cloud baru diisi bahan
+    // langsung tanpa migrasi), pakai nilai bawaan agar UI tidak kosong.
+    pengaturan: resPengaturan.data
+      ? mapPengaturanFromRow(resPengaturan.data as PengaturanRow)
+      : PENGATURAN_RESMI,
+    users: ((resProfil.data ?? []) as ProfilRow[]).map(mapProfilFromRow),
+    bahan: ((resBahan.data ?? []) as BahanRow[]).map(mapBahanFromRow),
+    menu: ((resMenu.data ?? []) as MenuRow[]).map(mapMenuFromRow),
+    mutasi: ((resMutasi.data ?? []) as MutasiRow[]).map(mapMutasiFromRow),
+    penjualan: ((resPenjualan.data ?? []) as PenjualanRow[]).map(mapPenjualanFromRow),
+    log: ((resLog.data ?? []) as LogAktivitasRow[]).map(mapLogFromRow),
   }
 }
 
-/**
- * Menyimpan penjualan dan mutasi terkait ke Supabase secara terkoordinasi.
- */
-export async function simpanPenjualanCloud(
-  penjualan: Penjualan,
-  mutasiList: Mutasi[],
-  log?: LogAktivitas,
-): Promise<void> {
-  if (!supabase) return
+// ==============================================================================
+// TULIS MASTER DATA (RLS: hanya admin)
+// ==============================================================================
 
-  // 1. Simpan Penjualan
-  const rowPenjualan = mapPenjualanToRow(penjualan)
-  const { error: errP } = await supabase.from('penjualan').upsert(rowPenjualan)
-  if (errP) throw errP
-
-  // 2. Simpan Mutasi terkait
-  if (mutasiList.length > 0) {
-    const rowsMutasi = mutasiList.map(mapMutasiToRow)
-    const { error: errM } = await supabase.from('mutasi').upsert(rowsMutasi)
-    if (errM) throw errM
-  }
-
-  // 3. Simpan Log aktivitas
-  if (log) {
-    const { error: errL } = await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-    if (errL) console.warn('Gagal mencatat log cloud:', errL)
-  }
-}
-
-/**
- * Menghapus penjualan dan mutasi terkait dari Supabase.
- */
-export async function hapusPenjualanCloud(
-  id: string,
-  log?: LogAktivitas,
-): Promise<void> {
-  if (!supabase) return
-
-  // Mutasi dengan penjualan_id = id akan dihapus
-  const { error: errM } = await supabase
-    .from('mutasi')
-    .delete()
-    .eq('penjualan_id', id)
-  if (errM) throw errM
-
-  const { error: errP } = await supabase
-    .from('penjualan')
-    .delete()
-    .eq('id', id)
-  if (errP) throw errP
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
-}
-
-export async function simpanMutasiCloud(
-  mutasi: Mutasi,
-  log?: LogAktivitas,
-): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('mutasi').upsert(mapMutasiToRow(mutasi))
-  if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
-}
-
-export async function hapusMutasiCloud(
-  id: string,
-  log?: LogAktivitas,
-): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('mutasi').delete().eq('id', id)
-  if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
-}
-
-export async function simpanBahanCloud(
-  bahan: Bahan,
-  log?: LogAktivitas,
-): Promise<void> {
+export async function simpanBahanCloud(bahan: Bahan): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from('bahan').upsert(mapBahanToRow(bahan))
   if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
 }
 
-export async function hapusBahanCloud(
-  id: string,
-  log?: LogAktivitas,
-): Promise<void> {
+export async function hapusBahanCloud(id: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from('bahan').delete().eq('id', id)
   if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
 }
 
-export async function simpanMenuCloud(
-  menu: Menu,
-  log?: LogAktivitas,
-): Promise<void> {
+export async function simpanMenuCloud(menu: Menu): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from('menu').upsert(mapMenuToRow(menu))
   if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
 }
 
-export async function hapusMenuCloud(
-  id: string,
-  log?: LogAktivitas,
-): Promise<void> {
+export async function hapusMenuCloud(id: string): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from('menu').delete().eq('id', id)
   if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
 }
 
-export async function simpanPengaturanCloud(
-  pengaturan: Pengaturan,
-  log?: LogAktivitas,
-): Promise<void> {
+export async function simpanPengaturanCloud(pengaturan: Pengaturan): Promise<void> {
   if (!supabase) return
   const { error } = await supabase
     .from('pengaturan')
     .upsert(mapPengaturanToRow(pengaturan, 'utama'))
   if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
-}
-
-export async function simpanPenggunaCloud(
-  user: User,
-  log?: LogAktivitas,
-): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('pengguna').upsert(mapPenggunaToRow(user))
-  if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
-}
-
-export async function hapusPenggunaCloud(
-  id: string,
-  log?: LogAktivitas,
-): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('pengguna').delete().eq('id', id)
-  if (error) throw error
-
-  if (log) {
-    await supabase.from('log_aktivitas').insert(mapLogToRow(log))
-  }
 }
 
 export async function simpanLogCloud(log: LogAktivitas): Promise<void> {
@@ -605,8 +418,54 @@ export async function simpanLogCloud(log: LogAktivitas): Promise<void> {
   if (error) throw error
 }
 
+// ==============================================================================
+// GANTI SELURUH DATA (reset / restore / migrasi awal)
+// ==============================================================================
+
+export interface DBCloud {
+  pengaturan: PengaturanRow | null
+  bahan: BahanRow[]
+  menu: MenuRow[]
+  penjualan: PenjualanRow[]
+  mutasi: MutasiRow[]
+  log: LogAktivitasRow[]
+}
+
+export function dbKeBarisCloud(db: DB): DBCloud {
+  return {
+    pengaturan: db.pengaturan?.namaKedai ? mapPengaturanToRow(db.pengaturan, 'utama') : null,
+    bahan: db.bahan.map(mapBahanToRow),
+    menu: db.menu.map(mapMenuToRow),
+    penjualan: db.penjualan.map(mapPenjualanToRow),
+    mutasi: db.mutasi.map(mapMutasiToRow),
+    log: db.log.map(mapLogToRow),
+  }
+}
+
 /**
- * Fungsi utilitas migrasi batch: mendorong seluruh data lokal ke Supabase.
+ * Menimpa seluruh data bisnis di cloud dengan snapshot lokal.
+ * Hanya admin (dicek ulang di server). Dipakai untuk migrasi, reset, dan restore.
+ */
+export async function gantiSemuaDataCloud(
+  db: DB,
+  log?: LogAktivitas,
+): Promise<void> {
+  if (!supabase) {
+    throw new Error('Supabase belum dikonfigurasi.')
+  }
+
+  const { error } = await supabase.rpc('ganti_semua_data', {
+    p_db: dbKeBarisCloud(db),
+    p_log: log ? mapLogToRow(log) : null,
+  })
+
+  if (error) {
+    throw new Error(error.message || 'Gagal mengganti data cloud.')
+  }
+}
+
+/**
+ * Kompatibilitas: dulu mendorong tabel satu per satu, sekarang satu RPC atomik.
  */
 export async function migrasiSemuaKeCloud(
   db: DB,
@@ -620,74 +479,18 @@ export async function migrasiSemuaKeCloud(
   }
 
   try {
-    onProgress?.('Menyimpan pengaturan kedai...', 10)
-    const { error: errP } = await supabase
-      .from('pengaturan')
-      .upsert(mapPengaturanToRow(db.pengaturan, 'utama'))
-    if (errP) throw errP
-
-    onProgress?.('Menyimpan data pengguna...', 25)
-    if (db.users.length > 0) {
-      const { error: errU } = await supabase
-        .from('pengguna')
-        .upsert(db.users.map(mapPenggunaToRow))
-      if (errU) throw errU
-    }
-
-    onProgress?.('Menyimpan master data bahan baku...', 45)
-    if (db.bahan.length > 0) {
-      // Chunk per 100 baris
-      for (let i = 0; i < db.bahan.length; i += 100) {
-        const slice = db.bahan.slice(i, i + 100).map(mapBahanToRow)
-        const { error } = await supabase.from('bahan').upsert(slice)
-        if (error) throw error
-      }
-    }
-
-    onProgress?.('Menyimpan katalog menu & resep...', 65)
-    if (db.menu.length > 0) {
-      for (let i = 0; i < db.menu.length; i += 100) {
-        const slice = db.menu.slice(i, i + 100).map(mapMenuToRow)
-        const { error } = await supabase.from('menu').upsert(slice)
-        if (error) throw error
-      }
-    }
-
-    onProgress?.('Menyimpan riwayat penjualan...', 80)
-    if (db.penjualan.length > 0) {
-      for (let i = 0; i < db.penjualan.length; i += 100) {
-        const slice = db.penjualan.slice(i, i + 100).map(mapPenjualanToRow)
-        const { error } = await supabase.from('penjualan').upsert(slice)
-        if (error) throw error
-      }
-    }
-
-    onProgress?.('Menyimpan riwayat mutasi stok...', 92)
-    if (db.mutasi.length > 0) {
-      for (let i = 0; i < db.mutasi.length; i += 100) {
-        const slice = db.mutasi.slice(i, i + 100).map(mapMutasiToRow)
-        const { error } = await supabase.from('mutasi').upsert(slice)
-        if (error) throw error
-      }
-    }
-
-    onProgress?.('Menyimpan log audit aktivitas...', 98)
-    if (db.log.length > 0) {
-      const sliceLog = db.log.slice(0, 100).map(mapLogToRow)
-      const { error } = await supabase.from('log_aktivitas').upsert(sliceLog)
-      if (error) console.warn('Peringatan simpan log:', error)
-    }
-
+    onProgress?.('Memeriksa sesi admin…', 10)
+    onProgress?.('Mengirim katalog bahan & menu…', 35)
+    onProgress?.('Mengirim riwayat penjualan & mutasi…', 65)
+    onProgress?.('Menyimpan log aktivitas…', 85)
+    await gantiSemuaDataCloud(db)
     onProgress?.('Migrasi selesai!', 100)
     return {
       sukses: true,
-      pesan: 'Seluruh data lokal berhasil dimigrasikan ke database Supabase Cloud!',
+      pesan: 'Seluruh data lokal berhasil dimigrasikan ke Supabase Cloud.',
     }
   } catch (err) {
     const pesan = err instanceof Error ? err.message : String(err)
-    return {
-      sukses: false,
-      pesan: `Gagal migrasi ke Supabase: ${pesan}`,
-    }
+    return { sukses: false, pesan: `Gagal migrasi ke Supabase: ${pesan}` }
   }
 }

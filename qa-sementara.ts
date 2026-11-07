@@ -377,7 +377,7 @@ function ujiMigrasi(): void {
   dekat(arabika, 8, 'Bahan baru mendapat stok awal dari pembelian seed (8 kg)')
 
   cek(hasil.penjualan[0].items[0].nama === 'Menu Lama', 'Snapshot nama item lama dilengkapi')
-  cek(hasil.penjualan[0].omzet === 30000, 'Kolom uang lama tetap tersimpan (warisan)')
+  cek(!('omzet' in hasil.penjualan[0]), 'Kolom omzet warisan dibuang pada migrasi stok-only')
   sama(hasil.pengaturan.namaKedai, 'Kedai Lama', 'Nama kedai lama dipertahankan')
   sama(hasil.pengaturan.halalId, 'HALAL-LAMA', 'Identitas halal lama dipertahankan')
   cek(

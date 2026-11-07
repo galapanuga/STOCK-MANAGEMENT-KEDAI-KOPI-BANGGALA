@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from 'react'
@@ -28,40 +29,54 @@ import { kebutuhanBahan, menuTanpaResep, periksaKetersediaan } from '../lib/menu
 import { buatDatabaseAwal } from '../lib/seed'
 import { normalisasiDB } from '../lib/storage'
 import { useAuth } from './AuthContext'
+import { gantiSemuaDataCloud, simpanLogCloud } from '../lib/cloudDb'
 import {
-  hapusBahanCloud,
-  hapusMenuCloud,
-  hapusMutasiCloud,
-  hapusPenggunaCloud,
-  hapusPenjualanCloud,
-  migrasiSemuaKeCloud,
-  simpanBahanCloud,
-  simpanLogCloud,
-  simpanMenuCloud,
-  simpanMutasiCloud,
-  simpanPengaturanCloud,
-  simpanPenggunaCloud,
-  simpanPenjualanCloud,
-} from '../lib/cloudDb'
-import { antrekanAksi, type OutboxAksi } from '../lib/outboxQueue'
+  antrekanAksi,
+  pastikanAntreanKosong,
+  prosesAntreanOutbox,
+  type OutboxAksi,
+} from '../lib/outboxQueue'
+import {
+  langgananPeristiwaSinkron,
+  siarkanPeristiwa,
+} from '../lib/peristiwa'
+import {
+  buatPenggunaCloud,
+  resetPasswordCloud,
+  ubahPenggunaCloud,
+} from '../lib/edgeAdmin'
 import { apakahSupabaseAktif } from '../lib/supabase'
 
+/**
+ * Semua perubahan data bisnis masuk outbox lebih dulu, lalu langsung diproses
+ * bila online. Dengan begitu tidak ada perubahan yang hilang bila koneksi
+ * terputus di tengah pengiriman, dan snapshot cloud tidak akan menimpa data
+ * yang belum sempat terkirim.
+ */
 function kirimAtauAntrekan(
   aksi: OutboxAksi,
   tipeOperasi: 'insert' | 'update' | 'delete',
   payload: unknown,
-  fnCloud: () => Promise<void>,
 ) {
   if (!apakahSupabaseAktif) return
 
-  if (typeof navigator !== 'undefined' && navigator.onLine) {
-    fnCloud().catch((err) => {
-      console.warn(`[CloudSync] Gagal mengirim langsung (${aksi}), masuk antrean:`, err)
-      antrekanAksi({ aksi, tipeOperasi, payload }).catch(console.error)
+  antrekanAksi({ aksi, tipeOperasi, payload })
+    .then(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        prosesAntreanOutbox().catch((error) => {
+          console.warn(`[Outbox] Gagal memproses ${aksi}:`, error)
+        })
+      }
     })
-  } else {
-    antrekanAksi({ aksi, tipeOperasi, payload }).catch(console.error)
-  }
+    .catch((error) => {
+      console.error('[Outbox] Gagal menyimpan perubahan ke antrean:', error)
+      siarkanPeristiwa({
+        tipe: 'penolakan',
+        pesan:
+          'Perubahan tampil di layar tetapi gagal masuk antrean sinkronisasi. Periksa penyimpanan browser lalu muat ulang aplikasi.',
+        kode: 'OUTBOX_GAGAL',
+      })
+    })
 }
 export interface InputBahan {
   nama: string
@@ -124,14 +139,14 @@ interface DataContextValue {
   ubahUser: (
     id: string,
     patch: { nama?: string; role?: Role; aktif?: boolean },
-  ) => void
+  ) => Promise<void>
   resetPassword: (id: string, password: string) => Promise<void>
   simpanPengaturan: (patch: Partial<Pengaturan>) => void
   tambahKategori: (nama: string) => void
   hapusKategori: (nama: string) => void
   tambahSatuan: (nama: string) => void
   hapusSatuan: (nama: string) => void
-  pulihkanBackup: (data: DB) => void
+  pulihkanBackup: (data: DB) => Promise<void>
   resetStok: () => Promise<void>
   catatLog: (aksi: string, detail: string) => void
 }
@@ -250,7 +265,7 @@ function siapkanPenjualan(
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { db: dbAuth, setDb, user, logout } = useAuth()
+  const { db: dbAuth, setDb, user, logout, modeOnline } = useAuth()
   const db = dbAuth as DB
 
   const stok = useMemo(
@@ -268,6 +283,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [db],
   )
 
+  // Terapkan hasil otoritatif dari server (nomor urut & mutasi) ke state lokal.
+  useEffect(() => {
+    if (!apakahSupabaseAktif) return undefined
+    return langgananPeristiwaSinkron((peristiwa) => {
+      if (peristiwa.tipe !== 'penjualan-tersimpan') return
+      setDb((prev) => {
+        if (!prev) return prev
+        const ada = prev.penjualan.some((p) => p.id === peristiwa.idLokal)
+        const penjualan = ada
+          ? prev.penjualan.map((p) =>
+              p.id === peristiwa.idLokal ? peristiwa.penjualan : p,
+            )
+          : [...prev.penjualan, peristiwa.penjualan]
+        return {
+          ...prev,
+          penjualan,
+          mutasi: [
+            ...prev.mutasi.filter((m) => m.penjualanId !== peristiwa.idLokal),
+            ...peristiwa.mutasi,
+          ],
+        }
+      })
+    })
+  }, [setDb])
+
   const buatLog = useCallback(
     (aksi: string, detail: string): LogAktivitas => ({
       id: uid('log'),
@@ -280,8 +320,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [user],
   )
 
+  /**
+   * Di mode online, server hanya mengizinkan admin mengubah master data.
+   * Cek di klien agar staf tidak membuat antrean yang pasti ditolak RLS.
+   */
+  const pastikanBolehKelolaMaster = useCallback(() => {
+    if (modeOnline && user?.role !== 'admin') {
+      throw new Error('Hanya admin yang dapat mengubah bahan atau menu.')
+    }
+  }, [modeOnline, user?.role])
+
   const tambahBahan = useCallback(
     (input: InputBahan): Bahan => {
+      pastikanBolehKelolaMaster()
       const nama = input.nama.trim()
       if (!nama) throw new Error('Nama bahan wajib diisi.')
       if (!input.satuan.trim()) throw new Error('Satuan wajib diisi.')
@@ -338,22 +389,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      kirimAtauAntrekan('bahan', 'insert', { bahan: bahanBaru, log }, () =>
-        simpanBahanCloud(bahanBaru, log),
-      )
-      if (mutasiBaru) {
-        kirimAtauAntrekan('mutasi', 'insert', { mutasi: mutasiBaru }, () =>
-          simpanMutasiCloud(mutasiBaru),
-        )
-      }
+      kirimAtauAntrekan('bahan', 'insert', {
+        bahan: bahanBaru,
+        log,
+        mutasiAwal: mutasiBaru,
+      })
 
       return bahanBaru
     },
-    [buatLog, db.bahan, setDb, user],
+    [buatLog, db.bahan, pastikanBolehKelolaMaster, setDb, user],
   )
 
   const ubahBahan = useCallback(
     (id: string, input: InputBahan) => {
+      pastikanBolehKelolaMaster()
       const nama = input.nama.trim()
       if (!nama) throw new Error('Nama bahan wajib diisi.')
       if (input.stokMin < 0) throw new Error('Stok minimum tidak boleh negatif.')
@@ -398,15 +447,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         satuan: input.satuan.trim(),
         stokMin: input.stokMin,
       }
-      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log }, () =>
-        simpanBahanCloud(bahanDiperbarui, log),
-      )
+      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log })
     },
-    [buatLog, db.bahan, setDb],
+    [buatLog, db.bahan, pastikanBolehKelolaMaster, setDb],
   )
 
   const arsipBahan = useCallback(
     (id: string, arsip: boolean) => {
+      pastikanBolehKelolaMaster()
       const bahan = db.bahan.find((b) => b.id === id)
       if (!bahan) throw new Error('Bahan tidak ditemukan.')
       const log = buatLog(
@@ -423,11 +471,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
 
       const bahanDiperbarui: Bahan = { ...bahan, arsip }
-      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log }, () =>
-        simpanBahanCloud(bahanDiperbarui, log),
-      )
+      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log })
     },
-    [buatLog, db.bahan, setDb],
+    [buatLog, db.bahan, pastikanBolehKelolaMaster, setDb],
   )
 
   const validasiMutasi = useCallback(
@@ -490,9 +536,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      kirimAtauAntrekan('mutasi', 'insert', { mutasi, log }, () =>
-        simpanMutasiCloud(mutasi, log),
-      )
+      kirimAtauAntrekan('mutasi', 'insert', { mode: 'insert', mutasi, log })
 
       return mutasi
     },
@@ -543,9 +587,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         keterangan: input.keterangan?.trim() || undefined,
         tanggal: input.tanggal || lama.tanggal,
       }
-      kirimAtauAntrekan('mutasi', 'update', { mutasi: mutasiDiperbarui, log }, () =>
-        simpanMutasiCloud(mutasiDiperbarui, log),
-      )
+      kirimAtauAntrekan('mutasi', 'update', {
+        mode: 'update',
+        mutasi: mutasiDiperbarui,
+        log,
+      })
     },
     [buatLog, db.mutasi, setDb, validasiMutasi],
   )
@@ -570,9 +616,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      kirimAtauAntrekan('hapus_mutasi', 'delete', { id, log }, () =>
-        hapusMutasiCloud(id, log),
-      )
+      kirimAtauAntrekan('hapus_mutasi', 'delete', { id, log })
     },
     [buatLog, db.bahan, db.mutasi, setDb],
   )
@@ -605,6 +649,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const tambahMenu = useCallback(
     (input: InputMenu): Menu => {
+      pastikanBolehKelolaMaster()
       const data = validasiMenu(input)
       const menuBaru: Menu = {
         id: uid('mnu'),
@@ -626,16 +671,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      kirimAtauAntrekan('menu', 'insert', { menu: menuBaru, log }, () =>
-        simpanMenuCloud(menuBaru, log),
-      )
+      kirimAtauAntrekan('menu', 'insert', { menu: menuBaru, log })
       return menuBaru
     },
-    [buatLog, setDb, validasiMenu],
+    [buatLog, pastikanBolehKelolaMaster, setDb, validasiMenu],
   )
 
   const ubahMenu = useCallback(
     (id: string, input: InputMenu) => {
+      pastikanBolehKelolaMaster()
       const lama = db.menu.find((m) => m.id === id)
       if (!lama) throw new Error('Menu tidak ditemukan.')
       const data = validasiMenu(input, id)
@@ -651,15 +695,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       )
 
       const menuDiperbarui: Menu = { ...lama, ...data }
-      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log }, () =>
-        simpanMenuCloud(menuDiperbarui, log),
-      )
+      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log })
     },
-    [buatLog, db.menu, setDb, validasiMenu],
+    [buatLog, db.menu, pastikanBolehKelolaMaster, setDb, validasiMenu],
   )
 
   const arsipMenu = useCallback(
     (id: string, arsip: boolean) => {
+      pastikanBolehKelolaMaster()
       const menu = db.menu.find((m) => m.id === id)
       if (!menu) throw new Error('Menu tidak ditemukan.')
       const log = buatLog(
@@ -677,11 +720,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       )
 
       const menuDiperbarui: Menu = { ...menu, arsip }
-      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log }, () =>
-        simpanMenuCloud(menuDiperbarui, log),
-      )
+      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log })
     },
-    [buatLog, db.menu, setDb],
+    [buatLog, db.menu, pastikanBolehKelolaMaster, setDb],
   )
 
   const catatPenjualan = useCallback(
@@ -731,12 +772,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      kirimAtauAntrekan(
-        'penjualan',
-        'insert',
-        { penjualan, mutasiList: hasil.mutasi, log },
-        () => simpanPenjualanCloud(penjualan, hasil.mutasi, log),
-      )
+      const payloadCloud = {
+        mode: 'insert' as const,
+        id,
+        tanggal: penjualan.tanggal,
+        items: input.items.filter((it) => it.jumlah > 0),
+        catatan: input.catatan?.trim() || undefined,
+        log,
+      }
+
+      kirimAtauAntrekan('penjualan', 'insert', payloadCloud)
 
       return penjualan
     },
@@ -797,12 +842,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      kirimAtauAntrekan(
-        'penjualan',
-        'update',
-        { penjualan, mutasiList: hasil.mutasi, log },
-        () => simpanPenjualanCloud(penjualan, hasil.mutasi, log),
-      )
+      const payloadCloud = {
+        mode: 'update' as const,
+        id,
+        tanggal: penjualan.tanggal,
+        items: input.items.filter((it) => it.jumlah > 0),
+        catatan: input.catatan?.trim() || undefined,
+        log,
+      }
+
+      kirimAtauAntrekan('penjualan', 'update', payloadCloud)
     },
     [buatLog, db, setDb, user],
   )
@@ -829,9 +878,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      kirimAtauAntrekan('hapus_penjualan', 'delete', { id, log }, () =>
-        hapusPenjualanCloud(id, log),
-      )
+      kirimAtauAntrekan('hapus_penjualan', 'delete', { id, log })
     },
     [buatLog, db.penjualan, setDb, user],
   )
@@ -852,6 +899,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
         throw new Error('Password minimal 6 karakter.')
       }
 
+      const log = buatLog(
+        'Tambah pengguna',
+        `Menambahkan pengguna "${nama}" (${input.role})`,
+      )
+
+      if (modeOnline) {
+        const baru = await buatPenggunaCloud({
+          username,
+          nama,
+          role: input.role,
+          password: input.password,
+          aktif: input.aktif ?? true,
+        })
+        setDb((prev) =>
+          prev
+            ? {
+                ...prev,
+                users: [...prev.users.filter((u) => u.id !== baru.id), baru],
+                log: [log, ...prev.log].slice(0, 250),
+              }
+            : prev,
+        )
+        simpanLogCloud(log).catch(console.error)
+        return
+      }
+
       const { salt, hash } = await buatPassword(input.password)
       const baru: User = {
         id: uid('usr'),
@@ -863,11 +936,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         aktif: input.aktif ?? true,
         createdAt: new Date().toISOString(),
       }
-      const log = buatLog(
-        'Tambah pengguna',
-        `Menambahkan pengguna "${nama}" (${input.role})`,
-      )
-
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -876,16 +944,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
-
-      kirimAtauAntrekan('pengguna', 'insert', { user: baru, log }, () =>
-        simpanPenggunaCloud(baru, log),
-      )
     },
-    [buatLog, db.users, setDb],
+    [buatLog, db.users, modeOnline, setDb],
   )
 
   const ubahUser = useCallback(
-    (id: string, patch: { nama?: string; role?: Role; aktif?: boolean }) => {
+    async (id: string, patch: { nama?: string; role?: Role; aktif?: boolean }) => {
       const target = db.users.find((u) => u.id === id)
       if (!target) throw new Error('Pengguna tidak ditemukan.')
 
@@ -917,6 +981,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }`,
       )
 
+      if (modeOnline) {
+        const diperbarui = await ubahPenggunaCloud({
+          id,
+          nama: patch.nama?.trim(),
+          role: patch.role,
+          aktif: patch.aktif,
+        })
+        setDb((prev) =>
+          prev
+            ? {
+                ...prev,
+                users: prev.users.map((u) => (u.id === id ? diperbarui : u)),
+                log: [log, ...prev.log].slice(0, 250),
+              }
+            : prev,
+        )
+        simpanLogCloud(log).catch(console.error)
+        return
+      }
+
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -934,18 +1018,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
-
-      const userDiperbarui: User = {
-        ...target,
-        nama: patch.nama?.trim() ?? target.nama,
-        role: patch.role ?? target.role,
-        aktif: patch.aktif ?? target.aktif,
-      }
-      kirimAtauAntrekan('pengguna', 'update', { user: userDiperbarui, log }, () =>
-        simpanPenggunaCloud(userDiperbarui, log),
-      )
     },
-    [buatLog, db.users, setDb, user],
+    [buatLog, db.users, modeOnline, setDb, user],
   )
 
   const resetPassword = useCallback(
@@ -953,12 +1027,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (password.length < 6) throw new Error('Password minimal 6 karakter.')
       const target = db.users.find((u) => u.id === id)
       if (!target) throw new Error('Pengguna tidak ditemukan.')
-      const { salt, hash } = await buatPassword(password)
-      const sekarang = new Date().toISOString()
+
       const log = buatLog(
         'Reset password',
         `Password akun "${target.username}" direset`,
       )
+
+      if (modeOnline) {
+        const diperbarui = await resetPasswordCloud({ id, password })
+        setDb((prev) =>
+          prev
+            ? {
+                ...prev,
+                users: prev.users.map((u) => (u.id === id ? diperbarui : u)),
+                log: [log, ...prev.log].slice(0, 250),
+              }
+            : prev,
+        )
+        simpanLogCloud(log).catch(console.error)
+        return
+      }
+
+      const { salt, hash } = await buatPassword(password)
+      const sekarang = new Date().toISOString()
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -971,18 +1062,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           log: [log, ...prev.log].slice(0, 250),
         }
       })
-
-      const userDiperbarui: User = {
-        ...target,
-        salt,
-        passwordHash: hash,
-        passwordChangedAt: sekarang,
-      }
-      kirimAtauAntrekan('pengguna', 'update', { user: userDiperbarui, log }, () =>
-        simpanPenggunaCloud(userDiperbarui, log),
-      )
     },
-    [buatLog, db.users, setDb],
+    [buatLog, db.users, modeOnline, setDb],
   )
 
   const simpanPengaturan = useCallback(
@@ -999,9 +1080,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       )
 
       const pengaturanBaru: Pengaturan = { ...db.pengaturan, ...patch }
-      kirimAtauAntrekan('pengaturan', 'update', { pengaturan: pengaturanBaru, log }, () =>
-        simpanPengaturanCloud(pengaturanBaru, log),
-      )
+      kirimAtauAntrekan('pengaturan', 'update', {
+        pengaturan: pengaturanBaru,
+        log,
+      })
     },
     [buatLog, db.pengaturan, setDb],
   )
@@ -1058,12 +1140,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   )
 
   const pulihkanBackup = useCallback(
-    (data: DB) => {
+    async (data: DB) => {
       if (!data || !Array.isArray(data.users) || !Array.isArray(data.bahan)) {
         throw new Error('File backup tidak valid.')
       }
 
       const bersih = normalisasiDB(data)
+      const log = buatLog('Pulihkan backup', 'Memulihkan data dari file backup')
+
+      if (modeOnline) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          throw new Error('Pulihkan backup membutuhkan koneksi internet.')
+        }
+        await pastikanAntreanKosong()
+        // Akun tidak diambil dari backup: identitas tetap dikelola Supabase Auth.
+        const hasil: DB = {
+          ...bersih,
+          users: db.users,
+          log: [log, ...bersih.log].slice(0, 250),
+        }
+        await gantiSemuaDataCloud(hasil, log)
+        setDb(hasil)
+        return
+      }
+
       const users = bersih.users.filter(
         (u) => u && u.id && u.username && u.salt && u.passwordHash,
       )
@@ -1078,44 +1178,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (operatorId && !hasil.users.some((u) => u.id === operatorId)) {
         logout()
       }
-      if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
-        migrasiSemuaKeCloud(hasil).catch(console.error)
-      }
     },
-    [logout, setDb, user],
+    [buatLog, db.users, logout, modeOnline, setDb, user],
   )
+
   const resetStok = useCallback(async () => {
     const seed = await buatDatabaseAwal()
     const log = buatLog(
       'Reset data',
       'Mengembalikan bahan, menu, penjualan, dan mutasi ke contoh awal',
     )
-    setDb((prev) =>
-      prev
-        ? {
-            ...prev,
-            bahan: seed.bahan,
-            mutasi: seed.mutasi,
-            menu: seed.menu,
-            penjualan: seed.penjualan,
-            log: [log, ...prev.log].slice(0, 250),
-          }
-        : prev,
-    )
-    if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
-      const resetDb: DB = {
-        ...db,
-        bahan: seed.bahan,
-        mutasi: seed.mutasi,
-        menu: seed.menu,
-        penjualan: seed.penjualan,
-        log: [log, ...db.log].slice(0, 250),
-      }
-      migrasiSemuaKeCloud(resetDb).catch(console.error)
+    const hasil: DB = {
+      ...db,
+      bahan: seed.bahan,
+      mutasi: seed.mutasi,
+      menu: seed.menu,
+      penjualan: seed.penjualan,
+      log: [log, ...db.log].slice(0, 250),
     }
-  },
-  [buatLog, db, setDb],
-)
+
+    if (modeOnline) {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error('Reset data membutuhkan koneksi internet.')
+      }
+      await pastikanAntreanKosong()
+      await gantiSemuaDataCloud(hasil, log)
+    }
+    setDb(hasil)
+  }, [buatLog, db, modeOnline, setDb])
 
   const catatLog = useCallback(
     (aksi: string, detail: string) => {
@@ -1125,9 +1215,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? { ...prev, log: [log, ...prev.log].slice(0, 250) }
           : prev,
       )
-      if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
-        simpanLogCloud(log).catch(console.error)
-      }
+      kirimAtauAntrekan('log', 'insert', { log })
     },
     [buatLog, setDb],
   )

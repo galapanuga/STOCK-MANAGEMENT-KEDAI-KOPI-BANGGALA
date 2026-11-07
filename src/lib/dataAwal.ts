@@ -138,7 +138,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_teh',
       nama: 'Teh',
       kategori: 'Kopi & Minuman',
-      harga: 5000,
       deskripsi: 'Teh untuk dinikmati hangat maupun dingin.',
       resep: [
         { bahanId: 'bhn_teh', jumlah: 1 },
@@ -156,7 +155,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_airmineral',
       nama: 'Air Mineral',
       kategori: 'Kopi & Minuman',
-      harga: 5000,
       deskripsi: 'Air mineral kemasan botol 600ml.',
       resep: [{ bahanId: 'bhn_airmineral', jumlah: 1 }],
       resepEstimasi: false,
@@ -167,7 +165,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_kopiracik',
       nama: 'Kopi Racik',
       kategori: 'Kopi & Minuman',
-      harga: 8000,
       deskripsi: 'Kopi racik seduh khas kedai.',
       resep: [
         { bahanId: 'bhn_robusta', jumlah: 0.015 },
@@ -183,7 +180,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_kopisusugaoel',
       nama: 'Kopi Susu Gaoel',
       kategori: 'Kopi & Minuman',
-      harga: 17000,
       deskripsi: 'Kopi susu andalan khas Kedai Kopi Banggala.',
       resep: [
         { bahanId: 'bhn_arabika', jumlah: 0.018 },
@@ -202,7 +198,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_kopisusukedai',
       nama: 'Kopi Susu Kedai',
       kategori: 'Kopi & Minuman',
-      harga: 17000,
       deskripsi: 'Kopi susu racikan kedai yang creamy dan mantap.',
       resep: [
         { bahanId: 'bhn_robusta', jumlah: 0.012 },
@@ -222,7 +217,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_soklat',
       nama: 'Soklat',
       kategori: 'Kopi & Minuman',
-      harga: 17000,
       deskripsi: 'Minuman cokelat kental dan legit.',
       resep: [
         { bahanId: 'bhn_cokelat', jumlah: 25 },
@@ -241,7 +235,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_matchacih',
       nama: 'Matchacih',
       kategori: 'Kopi & Minuman',
-      harga: 17000,
       deskripsi: 'Minuman matcha lembut dengan aroma wangi khas.',
       resep: [
         { bahanId: 'bhn_matcha', jumlah: 12 },
@@ -260,7 +253,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_americano',
       nama: 'Americano',
       kategori: 'Kopi & Minuman',
-      harga: 17000,
       deskripsi: 'Espresso double shot dipadu air segar, hangat atau dingin.',
       resep: [
         { bahanId: 'bhn_arabika', jumlah: 0.02 },
@@ -279,7 +271,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_indomie',
       nama: 'Indomie Goreng / Rebus',
       kategori: 'Makanan Hangat',
-      harga: 8500,
       deskripsi: 'Indomie goreng atau rebus racikan dapur kedai.',
       resep: [
         { bahanId: 'bhn_mie', jumlah: 1 },
@@ -293,7 +284,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_telurbarendo',
       nama: 'Nasi Telur Barendo',
       kategori: 'Makanan Hangat',
-      harga: 16000,
       deskripsi: 'Nasi hangat disajikan dengan telur dadar barendo kribo gurih.',
       resep: [
         { bahanId: 'bhn_beras', jumlah: 0.12 },
@@ -310,7 +300,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_mienyemek',
       nama: 'Mie Nyemek',
       kategori: 'Makanan Hangat',
-      harga: 16000,
       deskripsi: 'Mie nyemek kuah kental gurih dengan telur dan bumbu racik kedai.',
       resep: [
         { bahanId: 'bhn_mie', jumlah: 1 },
@@ -327,7 +316,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_ayampenyet',
       nama: 'Nasi Ayam Penyet',
       kategori: 'Makanan Hangat',
-      harga: 20000,
       deskripsi: 'Nasi hangat dengan ayam goreng gurih dan sambal penyet pedas nikmat.',
       resep: [
         { bahanId: 'bhn_beras', jumlah: 0.12 },
@@ -344,7 +332,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_bisakenyang',
       nama: 'Bisa Kenyang',
       kategori: 'Makanan Hangat',
-      harga: 32000,
       deskripsi: 'Porsi komplit nasi, ayam goreng, telur dadar, lalapan & sambal mantap.',
       resep: [
         { bahanId: 'bhn_beras', jumlah: 0.15 },
@@ -364,7 +351,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_kentang',
       nama: 'Kentang Goreng',
       kategori: 'Camilan / Snack',
-      harga: 12000,
       deskripsi: 'French fries renyah dengan taburan bumbu gurih.',
       resep: [
         { bahanId: 'bhn_kentang', jumlah: 0.15 },
@@ -378,7 +364,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_sempol',
       nama: 'Sempol Ayam',
       kategori: 'Camilan / Snack',
-      harga: 12000,
       deskripsi: 'Sempol ayam goreng renyah disajikan dengan saus cocolan.',
       resep: [
         { bahanId: 'bhn_sempol', jumlah: 5 },
@@ -393,7 +378,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_otakotak',
       nama: 'Otak-Otak',
       kategori: 'Camilan / Snack',
-      harga: 12000,
       deskripsi: 'Otak-otak ikan goreng gurih.',
       resep: [
         { bahanId: 'bhn_otakotak', jumlah: 6 },
@@ -407,7 +391,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_kebab',
       nama: 'Kebab Mini',
       kategori: 'Camilan / Snack',
-      harga: 20000,
       deskripsi: 'Kebab mini isi daging olahan dan saus spesial.',
       resep: [
         { bahanId: 'bhn_kebab', jumlah: 2 },
@@ -421,7 +404,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_canesusu',
       nama: 'Cane Susu',
       kategori: 'Camilan / Snack',
-      harga: 10000,
       deskripsi: 'Roti cane panggang disiram susu kental manis lezat.',
       resep: [
         { bahanId: 'bhn_roticane', jumlah: 1 },
@@ -435,7 +417,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_rotimaryam',
       nama: 'Roti Maryam',
       kategori: 'Camilan / Snack',
-      harga: 9000,
       deskripsi: 'Roti Maryam panggang empuk dengan aroma gurih.',
       resep: [
         { bahanId: 'bhn_rotimaryam', jumlah: 1 },
@@ -451,7 +432,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_nutrisari',
       nama: 'Nutrisari',
       kategori: 'Minuman Sachet',
-      harga: 7000,
       deskripsi: 'Minuman sari buah Nutrisari segar dingin/hangat.',
       resep: [
         { bahanId: 'bhn_sachet_nutrisari', jumlah: 1 },
@@ -468,7 +448,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_goodday',
       nama: 'Goodday',
       kategori: 'Minuman Sachet',
-      harga: 7000,
       deskripsi: 'Kopi sachet Goodday seduh dingin/hangat.',
       resep: [
         { bahanId: 'bhn_sachet_goodday', jumlah: 1 },
@@ -485,7 +464,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_indocafe',
       nama: 'Indocafe',
       kategori: 'Minuman Sachet',
-      harga: 7000,
       deskripsi: 'Kopi sachet Indocafe Coffeemix seduh.',
       resep: [
         { bahanId: 'bhn_sachet_indocafe', jumlah: 1 },
@@ -502,7 +480,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_maxtea',
       nama: 'Max Tea',
       kategori: 'Minuman Sachet',
-      harga: 8000,
       deskripsi: 'Max Tea Tarik creamy khas Malaysia seduh.',
       resep: [
         { bahanId: 'bhn_sachet_maxtea', jumlah: 1 },
@@ -519,7 +496,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_dancow',
       nama: 'Dancow',
       kategori: 'Minuman Sachet',
-      harga: 10000,
       deskripsi: 'Susu bubuk Dancow hangat atau dingin.',
       resep: [
         { bahanId: 'bhn_sachet_dancow', jumlah: 1 },
@@ -538,7 +514,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_add_nasi',
       nama: 'Nasi',
       kategori: 'Tambahan',
-      harga: 5000,
       deskripsi: 'Tambahan satu porsi nasi putih pulen.',
       resep: [{ bahanId: 'bhn_beras', jumlah: 0.12 }],
       resepEstimasi: true,
@@ -549,7 +524,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_add_telur',
       nama: 'Telur',
       kategori: 'Tambahan',
-      harga: 5000,
       deskripsi: 'Tambahan satu butir telur (ceplok / dadar).',
       resep: [
         { bahanId: 'bhn_telur', jumlah: 1 },
@@ -563,7 +537,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_add_sosis',
       nama: 'Sosis',
       kategori: 'Tambahan',
-      harga: 6000,
       deskripsi: 'Tambahan sosis goreng gurih.',
       resep: [
         { bahanId: 'bhn_sosis', jumlah: 1 },
@@ -577,7 +550,6 @@ export function daftarMenuAwal(): Menu[] {
       id: 'mnu_add_nugget',
       nama: 'Nugget',
       kategori: 'Tambahan',
-      harga: 6000,
       deskripsi: 'Tambahan nugget ayam goreng 3 pcs.',
       resep: [
         { bahanId: 'bhn_nugget', jumlah: 3 },
@@ -591,60 +563,60 @@ export function daftarMenuAwal(): Menu[] {
 }
 
 /**
- * Daftar pembelian bahan awal untuk data demo v2 (lengkap dengan harga satuan).
+ * Daftar pembelian bahan awal untuk data demo v2.
  */
 export function mutasiPembelianV2(user: User): Mutasi[] {
   const pembelian = [
     // Biji & Dairy & Sirup
-    { bahanId: 'bhn_arabika', jumlah: 8, harga: 180000, ket: 'Pembelian Biji Arabika', hari: 14, jam: 9 },
-    { bahanId: 'bhn_robusta', jumlah: 6, harga: 120000, ket: 'Pembelian Biji Robusta', hari: 14, jam: 9 },
-    { bahanId: 'bhn_susu', jumlah: 24, harga: 22000, ket: 'Pembelian Susu UHT Diamond', hari: 14, jam: 9 },
-    { bahanId: 'bhn_oat', jumlah: 4, harga: 38000, ket: 'Pembelian Susu Oat', hari: 13, jam: 9 },
-    { bahanId: 'bhn_gulaaren', jumlah: 8, harga: 35000, ket: 'Pembelian Gula Aren Cair', hari: 13, jam: 10 },
-    { bahanId: 'bhn_gulapasir', jumlah: 20, harga: 17500, ket: 'Pembelian Gula Pasir 20kg', hari: 13, jam: 10 },
-    { bahanId: 'bhn_vanila', jumlah: 4, harga: 85000, ket: 'Pembelian Sirup Vanila', hari: 13, jam: 10 },
-    { bahanId: 'bhn_matcha', jumlah: 1000, harga: 300, ket: 'Bubuk Matcha Premium', hari: 13, jam: 10 },
-    { bahanId: 'bhn_cokelat', jumlah: 2000, harga: 80, ket: 'Bubuk Cokelat Murni', hari: 12, jam: 11 },
-    { bahanId: 'bhn_teh', jumlah: 200, harga: 1000, ket: 'Teh Celup Melati', hari: 10, jam: 9 },
-    { bahanId: 'bhn_es', jumlah: 50, harga: 5000, ket: 'Es Batu Kristal Higienis', hari: 11, jam: 9 },
-    { bahanId: 'bhn_airmineral', jumlah: 48, harga: 2500, ket: 'Air Mineral 2 Dus', hari: 12, jam: 10 },
+    { bahanId: 'bhn_arabika', jumlah: 8, ket: 'Pembelian Biji Arabika', hari: 14, jam: 9 },
+    { bahanId: 'bhn_robusta', jumlah: 6, ket: 'Pembelian Biji Robusta', hari: 14, jam: 9 },
+    { bahanId: 'bhn_susu', jumlah: 24, ket: 'Pembelian Susu UHT Diamond', hari: 14, jam: 9 },
+    { bahanId: 'bhn_oat', jumlah: 4, ket: 'Pembelian Susu Oat', hari: 13, jam: 9 },
+    { bahanId: 'bhn_gulaaren', jumlah: 8, ket: 'Pembelian Gula Aren Cair', hari: 13, jam: 10 },
+    { bahanId: 'bhn_gulapasir', jumlah: 20, ket: 'Pembelian Gula Pasir 20kg', hari: 13, jam: 10 },
+    { bahanId: 'bhn_vanila', jumlah: 4, ket: 'Pembelian Sirup Vanila', hari: 13, jam: 10 },
+    { bahanId: 'bhn_matcha', jumlah: 1000, ket: 'Bubuk Matcha Premium', hari: 13, jam: 10 },
+    { bahanId: 'bhn_cokelat', jumlah: 2000, ket: 'Bubuk Cokelat Murni', hari: 12, jam: 11 },
+    { bahanId: 'bhn_teh', jumlah: 200, ket: 'Teh Celup Melati', hari: 10, jam: 9 },
+    { bahanId: 'bhn_es', jumlah: 50, ket: 'Es Batu Kristal Higienis', hari: 11, jam: 9 },
+    { bahanId: 'bhn_airmineral', jumlah: 48, ket: 'Air Mineral 2 Dus', hari: 12, jam: 10 },
 
     // Dapur & Makanan Hangat
-    { bahanId: 'bhn_beras', jumlah: 25, harga: 14000, ket: 'Beras Pulen 25kg', hari: 12, jam: 9 },
-    { bahanId: 'bhn_telur', jumlah: 90, harga: 2200, ket: 'Telur Ayam 90 butir', hari: 12, jam: 9 },
-    { bahanId: 'bhn_mie', jumlah: 80, harga: 3200, ket: 'Indomie 2 Dus', hari: 12, jam: 9 },
-    { bahanId: 'bhn_ayam', jumlah: 10, harga: 38000, ket: 'Ayam Potong Segar 10kg', hari: 12, jam: 9 },
-    { bahanId: 'bhn_minyak', jumlah: 12, harga: 18000, ket: 'Minyak Goreng 12L', hari: 12, jam: 9 },
-    { bahanId: 'bhn_kecap', jumlah: 6, harga: 22000, ket: 'Kecap Manis Botol Besar', hari: 12, jam: 9 },
-    { bahanId: 'bhn_sambal', jumlah: 80, harga: 1500, ket: 'Bumbu & Sambal Racikan', hari: 12, jam: 9 },
-    { bahanId: 'bhn_lalapan', jumlah: 60, harga: 800, ket: 'Sayur & Lalapan Pasar', hari: 12, jam: 9 },
+    { bahanId: 'bhn_beras', jumlah: 25, ket: 'Beras Pulen 25kg', hari: 12, jam: 9 },
+    { bahanId: 'bhn_telur', jumlah: 90, ket: 'Telur Ayam 90 butir', hari: 12, jam: 9 },
+    { bahanId: 'bhn_mie', jumlah: 80, ket: 'Indomie 2 Dus', hari: 12, jam: 9 },
+    { bahanId: 'bhn_ayam', jumlah: 10, ket: 'Ayam Potong Segar 10kg', hari: 12, jam: 9 },
+    { bahanId: 'bhn_minyak', jumlah: 12, ket: 'Minyak Goreng 12L', hari: 12, jam: 9 },
+    { bahanId: 'bhn_kecap', jumlah: 6, ket: 'Kecap Manis Botol Besar', hari: 12, jam: 9 },
+    { bahanId: 'bhn_sambal', jumlah: 80, ket: 'Bumbu & Sambal Racikan', hari: 12, jam: 9 },
+    { bahanId: 'bhn_lalapan', jumlah: 60, ket: 'Sayur & Lalapan Pasar', hari: 12, jam: 9 },
 
     // Camilan & Frozen
-    { bahanId: 'bhn_kentang', jumlah: 8, harga: 32000, ket: 'Kentang Frozen 8kg', hari: 11, jam: 10 },
-    { bahanId: 'bhn_sempol', jumlah: 80, harga: 1200, ket: 'Sempol Ayam 80 tusuk', hari: 11, jam: 10 },
-    { bahanId: 'bhn_otakotak', jumlah: 80, harga: 1000, ket: 'Otak-Otak Ikan', hari: 11, jam: 10 },
-    { bahanId: 'bhn_kebab', jumlah: 30, harga: 5500, ket: 'Kebab Mini Frozen 30 pcs', hari: 11, jam: 10 },
-    { bahanId: 'bhn_roticane', jumlah: 30, harga: 4000, ket: 'Roti Cane Frozen 30 pcs', hari: 11, jam: 10 },
-    { bahanId: 'bhn_rotimaryam', jumlah: 30, harga: 3800, ket: 'Roti Maryam Frozen 30 pcs', hari: 11, jam: 10 },
-    { bahanId: 'bhn_skm', jumlah: 8, harga: 12000, ket: 'Susu Kental Manis 8 botol', hari: 11, jam: 10 },
-    { bahanId: 'bhn_sosis', jumlah: 50, harga: 2200, ket: 'Sosis Ayam/Sapi 50 pcs', hari: 11, jam: 10 },
-    { bahanId: 'bhn_nugget', jumlah: 90, harga: 1000, ket: 'Nugget Ayam 90 pcs', hari: 11, jam: 10 },
+    { bahanId: 'bhn_kentang', jumlah: 8, ket: 'Kentang Frozen 8kg', hari: 11, jam: 10 },
+    { bahanId: 'bhn_sempol', jumlah: 80, ket: 'Sempol Ayam 80 tusuk', hari: 11, jam: 10 },
+    { bahanId: 'bhn_otakotak', jumlah: 80, ket: 'Otak-Otak Ikan', hari: 11, jam: 10 },
+    { bahanId: 'bhn_kebab', jumlah: 30, ket: 'Kebab Mini Frozen 30 pcs', hari: 11, jam: 10 },
+    { bahanId: 'bhn_roticane', jumlah: 30, ket: 'Roti Cane Frozen 30 pcs', hari: 11, jam: 10 },
+    { bahanId: 'bhn_rotimaryam', jumlah: 30, ket: 'Roti Maryam Frozen 30 pcs', hari: 11, jam: 10 },
+    { bahanId: 'bhn_skm', jumlah: 8, ket: 'Susu Kental Manis 8 botol', hari: 11, jam: 10 },
+    { bahanId: 'bhn_sosis', jumlah: 50, ket: 'Sosis Ayam/Sapi 50 pcs', hari: 11, jam: 10 },
+    { bahanId: 'bhn_nugget', jumlah: 90, ket: 'Nugget Ayam 90 pcs', hari: 11, jam: 10 },
 
     // Sachet
-    { bahanId: 'bhn_sachet_nutrisari', jumlah: 50, harga: 1800, ket: 'Nutrisari Jeruk 5 renceng', hari: 10, jam: 9 },
-    { bahanId: 'bhn_sachet_goodday', jumlah: 50, harga: 1700, ket: 'Goodday Mocacinno 5 renceng', hari: 10, jam: 9 },
-    { bahanId: 'bhn_sachet_indocafe', jumlah: 50, harga: 1700, ket: 'Indocafe Coffeemix 5 renceng', hari: 10, jam: 9 },
-    { bahanId: 'bhn_sachet_maxtea', jumlah: 40, harga: 2400, ket: 'Max Tea Tarik 4 renceng', hari: 10, jam: 9 },
-    { bahanId: 'bhn_sachet_dancow', jumlah: 40, harga: 3500, ket: 'Dancow Sachet 4 renceng', hari: 10, jam: 9 },
+    { bahanId: 'bhn_sachet_nutrisari', jumlah: 50, ket: 'Nutrisari Jeruk 5 renceng', hari: 10, jam: 9 },
+    { bahanId: 'bhn_sachet_goodday', jumlah: 50, ket: 'Goodday Mocacinno 5 renceng', hari: 10, jam: 9 },
+    { bahanId: 'bhn_sachet_indocafe', jumlah: 50, ket: 'Indocafe Coffeemix 5 renceng', hari: 10, jam: 9 },
+    { bahanId: 'bhn_sachet_maxtea', jumlah: 40, ket: 'Max Tea Tarik 4 renceng', hari: 10, jam: 9 },
+    { bahanId: 'bhn_sachet_dancow', jumlah: 40, ket: 'Dancow Sachet 4 renceng', hari: 10, jam: 9 },
 
     // Kemasan
-    { bahanId: 'bhn_cup12', jumlah: 1000, harga: 700, ket: 'Cup 12 oz 1000 pcs', hari: 12, jam: 11 },
-    { bahanId: 'bhn_cup16', jumlah: 1000, harga: 850, ket: 'Cup 16 oz 1000 pcs', hari: 12, jam: 11 },
-    { bahanId: 'bhn_lid', jumlah: 1000, harga: 250, ket: 'Lid Cup 1000 pcs', hari: 12, jam: 11 },
-    { bahanId: 'bhn_sedotan', jumlah: 500, harga: 300, ket: 'Sedotan Kertas 500 pcs', hari: 11, jam: 9 },
+    { bahanId: 'bhn_cup12', jumlah: 1000, ket: 'Cup 12 oz 1000 pcs', hari: 12, jam: 11 },
+    { bahanId: 'bhn_cup16', jumlah: 1000, ket: 'Cup 16 oz 1000 pcs', hari: 12, jam: 11 },
+    { bahanId: 'bhn_lid', jumlah: 1000, ket: 'Lid Cup 1000 pcs', hari: 12, jam: 11 },
+    { bahanId: 'bhn_sedotan', jumlah: 500, ket: 'Sedotan Kertas 500 pcs', hari: 11, jam: 9 },
 
     // Restock susu
-    { bahanId: 'bhn_susu', jumlah: 12, harga: 23000, ket: 'Restock Susu Diamond', hari: 5, jam: 10 },
+    { bahanId: 'bhn_susu', jumlah: 12, ket: 'Restock Susu Diamond', hari: 5, jam: 10 },
   ]
 
   return pembelian.map((p, idx) => {
@@ -654,7 +626,6 @@ export function mutasiPembelianV2(user: User): Mutasi[] {
       bahanId: p.bahanId,
       tipe: 'masuk',
       jumlah: p.jumlah,
-      hargaSatuan: p.harga,
       keterangan: p.ket,
       tanggal,
       userId: user.id,

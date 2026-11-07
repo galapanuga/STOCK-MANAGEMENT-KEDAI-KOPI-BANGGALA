@@ -25,9 +25,10 @@ import {
 import { namaHariIndo, URUTAN_HARI } from '../lib/operasional'
 import { apakahSupabaseAktif } from '../lib/supabase'
 import { migrasiSemuaKeCloud } from '../lib/cloudDb'
+import { pastikanAntreanKosong } from '../lib/outboxQueue'
 
 export function PengaturanPage() {
-  const { user, gantiPassword } = useAuth()
+  const { user, gantiPassword, modeOnline } = useAuth()
   const {
     db,
     simpanPengaturan,
@@ -115,21 +116,29 @@ export function PengaturanPage() {
     e.preventDefault()
     setGalatPassword('')
     if (!user) return
-    if (!passwordLama) return setGalatPassword('Masukkan password saat ini.')
+    if (!modeOnline && !passwordLama) {
+      return setGalatPassword('Masukkan password saat ini.')
+    }
     if (passwordBaru.length < 6) return setGalatPassword('Password baru minimal 6 karakter.')
     if (passwordBaru !== passwordUlang) {
       return setGalatPassword('Konfirmasi password baru tidak sama.')
     }
     setMemprosesPassword(true)
     try {
-      const cocok = await verifikasiPassword(
-        passwordLama,
-        user.salt,
-        user.passwordHash,
-      )
-      if (!cocok) {
-        setGalatPassword('Password saat ini salah.')
-        return
+      if (!modeOnline) {
+        if (!user.salt || !user.passwordHash) {
+          setGalatPassword('Akun lokal tidak memiliki password yang valid.')
+          return
+        }
+        const cocok = await verifikasiPassword(
+          passwordLama,
+          user.salt,
+          user.passwordHash,
+        )
+        if (!cocok) {
+          setGalatPassword('Password saat ini salah.')
+          return
+        }
       }
       await gantiPassword(user.id, passwordBaru)
       setPasswordLama('')
@@ -163,7 +172,9 @@ export function PengaturanPage() {
       ) {
         throw new Error('Struktur file tidak sesuai.')
       }
-      if (data.users.length === 0) throw new Error('File backup tidak memiliki akun.')
+      if (!modeOnline && data.users.length === 0) {
+        throw new Error('File backup tidak memiliki akun.')
+      }
       setCalonBackup(data)
     } catch (error) {
       toast.error(
@@ -176,10 +187,10 @@ export function PengaturanPage() {
     }
   }
 
-  const terapkanBackup = () => {
+  const terapkanBackup = async () => {
     if (!calonBackup) return
     try {
-      pulihkanBackup(calonBackup)
+      await pulihkanBackup(calonBackup)
       toast.sukses('Data berhasil dipulihkan dari backup.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal memulihkan data.')
@@ -213,12 +224,23 @@ export function PengaturanPage() {
       )
       return
     }
+    if (user?.role !== 'admin') {
+      toast.error('Hanya admin yang dapat memigrasikan data ke cloud.')
+      return
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.error('Migrasi membutuhkan koneksi internet.')
+      return
+    }
 
     setSedangMigrasi(true)
     setProgresMigrasi(5)
     setPesanMigrasi('Menghubungkan ke Supabase Cloud…')
 
     try {
+      setPesanMigrasi('Memastikan antrean sinkronisasi kosong…')
+      await pastikanAntreanKosong()
+
       const hasil = await migrasiSemuaKeCloud(db, (pesan, persen) => {
         setPesanMigrasi(pesan)
         setProgresMigrasi(persen)
@@ -483,16 +505,18 @@ export function PengaturanPage() {
                 {galatPassword}
               </p>
             )}
-            <Field label="Password Saat Ini" htmlFor="pw-lama">
-              <input
-                id="pw-lama"
-                type="password"
-                className="input"
-                value={passwordLama}
-                onChange={(e) => setPasswordLama(e.target.value)}
-                autoComplete="current-password"
-              />
-            </Field>
+            {!modeOnline && (
+              <Field label="Password Saat Ini" htmlFor="pw-lama">
+                <input
+                  id="pw-lama"
+                  type="password"
+                  className="input"
+                  value={passwordLama}
+                  onChange={(e) => setPasswordLama(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </Field>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Password Baru" htmlFor="pw-baru">
                 <input
@@ -530,10 +554,15 @@ export function PengaturanPage() {
         <section className="card xl:col-span-2">
           <SectionHeader
             judul="Data & Backup"
-            deskripsi="Seluruh data tersimpan di browser perangkat ini."
+            deskripsi={
+              modeOnline
+                ? 'Data tersinkron ke Supabase Cloud. Backup JSON tetap disarankan secara rutin.'
+                : 'Seluruh data tersimpan di browser perangkat ini.'
+            }
           />
           <div className="space-y-4 p-5">
             {/* Kartu Migrasi Supabase Cloud */}
+            {modeOnline && user?.role === 'admin' && (
             <div className="rounded-xl border border-line bg-cream/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -576,6 +605,7 @@ export function PengaturanPage() {
                 </div>
               )}
             </div>
+            )}
 
             <div className="flex items-center justify-between gap-3 rounded-xl bg-cream px-4 py-3 text-xs">
               <span className="text-muted">

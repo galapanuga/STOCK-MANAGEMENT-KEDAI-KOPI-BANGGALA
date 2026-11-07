@@ -10,40 +10,53 @@ import {
   type SetStateAction,
 } from 'react'
 import type { DB, User } from '../types'
-import { buatPassword, hapusSesi, ambilSesi, simpanSesi, verifikasiPassword } from '../lib/auth'
+import {
+  buatPassword,
+  hapusSesi,
+  ambilSesi,
+  simpanSesi,
+  verifikasiPassword,
+} from '../lib/auth'
 import {
   mapBahanFromRow,
   mapLogFromRow,
   mapMenuFromRow,
   mapMutasiFromRow,
   mapPengaturanFromRow,
-  mapPenggunaFromRow,
   mapPenjualanFromRow,
-  muatDBSupabase,
-  simpanPenggunaCloud,
+  mapProfilFromRow,
   type BahanRow,
   type LogAktivitasRow,
   type MenuRow,
   type MutasiRow,
   type PengaturanRow,
-  type PenggunaRow,
   type PenjualanRow,
+  type ProfilRow,
 } from '../lib/cloudDb'
-import { uid } from '../lib/id'
-import { antrekanAksi, prosesAntreanOutbox } from '../lib/outboxQueue'
+import { ambilProfilCloud } from '../lib/rpc'
+import { langgananPeristiwaSinkron } from '../lib/peristiwa'
+import { sinkronkanAwal } from '../lib/sinkron'
 import { inisialisasiDB } from '../lib/seed'
 import { simpanDB } from '../lib/storage'
-import { apakahSupabaseAktif, supabase } from '../lib/supabase'
+import {
+  apakahSupabaseAktif,
+  emailDariUsername,
+  supabase,
+} from '../lib/supabase'
 
 interface AuthContextValue {
   db: DB | null
   setDb: Dispatch<SetStateAction<DB | null>>
   user: User | null
   siap: boolean
+  modeOnline: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
   gantiPassword: (userId: string, passwordBaru: string) => Promise<void>
 }
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+const KUNCI_PROFIL_CACHE = 'banggala_profil_cache'
 
 function bacaIdLama(record: unknown): string | null {
   if (record && typeof record === 'object' && 'id' in record && typeof record.id === 'string') {
@@ -52,60 +65,145 @@ function bacaIdLama(record: unknown): string | null {
   return null
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+function bacaCacheProfil(): User | null {
+  try {
+    const mentah = localStorage.getItem(KUNCI_PROFIL_CACHE)
+    if (!mentah) return null
+    const data = JSON.parse(mentah) as User
+    if (!data?.id || !data?.username) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+function simpanCacheProfil(profil: User | null): void {
+  try {
+    if (!profil) {
+      localStorage.removeItem(KUNCI_PROFIL_CACHE)
+      return
+    }
+    localStorage.setItem(KUNCI_PROFIL_CACHE, JSON.stringify(profil))
+  } catch {
+    // cache bersifat opsional
+  }
+}
+
+function gabungProfilKeDb(db: DB, profil: User): DB {
+  const ada = db.users.some((u) => u.id === profil.id)
+  return {
+    ...db,
+    users: ada
+      ? db.users.map((u) => (u.id === profil.id ? profil : u))
+      : [...db.users, profil],
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<DB | null>(null)
   const [siap, setSiap] = useState(false)
   const [userId, setUserId] = useState<string | null>(
-    () => ambilSesi()?.userId ?? null,
+    () => (apakahSupabaseAktif ? null : (ambilSesi()?.userId ?? null)),
+  )
+  const [profil, setProfil] = useState<User | null>(() =>
+    apakahSupabaseAktif ? bacaCacheProfil() : null,
   )
   const [galatInit, setGalatInit] = useState<string | null>(null)
 
-  // 1. Pemuatan Hybrid (Lokal Cache Terlebih Dahulu, Lalu Cloud Sync)
+  // ----------------------------------------------------------------------------
+  // 1. Startup: cache lokal dulu, lalu sesi & snapshot cloud
+  // ----------------------------------------------------------------------------
   useEffect(() => {
     let aktif = true
 
-    async function inisialisasiHybrid() {
+    async function inisialisasi() {
       try {
-        // Langkah A: Tampilkan data lokal secepat mungkin (< 50ms)
         const dataLokal = await inisialisasiDB()
         if (!aktif) return
         setDb(dataLokal)
+
+        if (!apakahSupabaseAktif) {
+          setUserId(ambilSesi()?.userId ?? null)
+          setSiap(true)
+          return
+        }
+
+        // --- Mode online ---
+        const cache = bacaCacheProfil()
+        if (cache) setProfil(cache)
+
+        const { data: sesi, error: errorSesi } = await supabase!.auth.getSession()
+        if (!aktif) return
+
+        const sedangOnline =
+          typeof navigator === 'undefined' || navigator.onLine
+        const galatJaringanSesi =
+          Boolean(errorSesi) &&
+          /fetch|network|load failed|timeout|abort/i.test(errorSesi!.message)
+
+        if (!sesi.session && (!sedangOnline || galatJaringanSesi)) {
+          // Offline (atau jaringan gagal): access token bisa saja kedaluwarsa,
+          // tetapi profil cache tetap dipakai agar kasir masih bisa mencatat.
+          if (cache) setProfil(cache)
+        } else if (!sesi.session) {
+          setProfil(null)
+          simpanCacheProfil(null)
+        } else if (sedangOnline) {
+          try {
+            const profilCloud = await ambilProfilCloud(sesi.session.user.id)
+            if (!aktif) return
+            if (profilCloud && profilCloud.aktif) {
+              setProfil(profilCloud)
+              simpanCacheProfil(profilCloud)
+              setDb((prev) => (prev ? gabungProfilKeDb(prev, profilCloud) : prev))
+            } else {
+              // Profil tidak ada (dihapus) atau sudah nonaktif: sesi tidak sah.
+              await supabase!.auth.signOut()
+              setProfil(null)
+              simpanCacheProfil(null)
+            }
+          } catch (error) {
+            // Offline / server tidak terjangkau: tetap pakai cache.
+            console.warn('[Banggala Stock] Profil cloud tidak dapat dimuat:', error)
+            if (cache) setProfil(cache)
+          }
+        }
+
         setSiap(true)
 
-        // Langkah B: Jika Supabase aktif dan online, ambil versi cloud terbaru
-        if (apakahSupabaseAktif && typeof navigator !== 'undefined' && navigator.onLine) {
-          try {
-            const dataCloud = await muatDBSupabase()
-            if (aktif && dataCloud && dataCloud.users.length > 0) {
+        // Sinkronisasi background: outbox dulu, baru snapshot cloud.
+        if (
+          sesi.session &&
+          typeof navigator !== 'undefined' &&
+          navigator.onLine
+        ) {
+          sinkronkanAwal()
+            .then((dataCloud) => {
+              if (!aktif || !dataCloud) return
               setDb(dataCloud)
               simpanDB(dataCloud)
-            }
-          } catch (errCloud) {
-            console.warn('[Banggala Stock] Gagal sinkronisasi data cloud saat startup:', errCloud)
-          }
-
-          // Segera proses antrean outbox jika ada item tertunda
-          prosesAntreanOutbox().catch(console.error)
+            })
+            .catch((error) => {
+              console.warn('[Banggala Stock] Sinkronisasi awal gagal:', error)
+            })
         }
       } catch (error: unknown) {
         if (!aktif) return
-        setGalatInit(
-          error instanceof Error ? error.message : 'Gagal memuat data.',
-        )
+        setGalatInit(error instanceof Error ? error.message : 'Gagal memuat data.')
         setSiap(true)
       }
     }
 
-    inisialisasiHybrid()
+    inisialisasi()
 
     return () => {
       aktif = false
     }
   }, [])
 
-  // 2. Simpan setiap perubahan state DB ke localStorage sebagai cadangan offline
+  // ----------------------------------------------------------------------------
+  // 2. Persist snapshot ke localStorage (cache offline)
+  // ----------------------------------------------------------------------------
   useEffect(() => {
     if (!db) return
     try {
@@ -115,9 +213,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [db])
 
-  // 3. Langganan Realtime Supabase (WebSocket) untuk Sinkronisasi Multi-Perangkat
+  // ----------------------------------------------------------------------------
+  // 3. Realtime Supabase
+  // ----------------------------------------------------------------------------
   useEffect(() => {
-    if (!apakahSupabaseAktif || !supabase) return
+    if (!apakahSupabaseAktif || !supabase || !profil?.id) return
+
+    const perbaruiKoleksi = <T extends { id: string }>(
+      daftar: T[],
+      item: T,
+      urutanAwal = false,
+    ): T[] => {
+      if (daftar.some((x) => x.id === item.id)) {
+        return daftar.map((x) => (x.id === item.id ? item : x))
+      }
+      return urutanAwal ? [item, ...daftar] : [...daftar, item]
+    }
 
     const channel = supabase
       .channel('banggala_realtime_changes')
@@ -127,35 +238,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const item = mapMutasiFromRow(payload.new as MutasiRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              if (prev.mutasi.some((m) => m.id === item.id)) {
-                return {
-                  ...prev,
-                  mutasi: prev.mutasi.map((m) => (m.id === item.id ? item : m)),
-                }
-              }
-              return { ...prev, mutasi: [item, ...prev.mutasi] }
-            })
+            setDb((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    mutasi: perbaruiKoleksi(prev.mutasi, item, true),
+                  }
+                : prev,
+            )
           } else if (payload.eventType === 'UPDATE') {
             const item = mapMutasiFromRow(payload.new as MutasiRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                mutasi: prev.mutasi.map((m) => (m.id === item.id ? item : m)),
-              }
-            })
+            setDb((prev) =>
+              prev
+                ? { ...prev, mutasi: perbaruiKoleksi(prev.mutasi, item) }
+                : prev,
+            )
           } else if (payload.eventType === 'DELETE') {
             const id = bacaIdLama(payload.old)
             if (!id) return
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                mutasi: prev.mutasi.filter((m) => m.id !== id),
-              }
-            })
+            setDb((prev) =>
+              prev ? { ...prev, mutasi: prev.mutasi.filter((m) => m.id !== id) } : prev,
+            )
           }
         },
       )
@@ -165,39 +268,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const item = mapPenjualanFromRow(payload.new as PenjualanRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              if (prev.penjualan.some((p) => p.id === item.id)) {
-                return {
-                  ...prev,
-                  penjualan: prev.penjualan.map((p) =>
-                    p.id === item.id ? item : p,
-                  ),
-                }
-              }
-              return { ...prev, penjualan: [item, ...prev.penjualan] }
-            })
+            setDb((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    penjualan: perbaruiKoleksi(prev.penjualan, item, true),
+                  }
+                : prev,
+            )
           } else if (payload.eventType === 'UPDATE') {
             const item = mapPenjualanFromRow(payload.new as PenjualanRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                penjualan: prev.penjualan.map((p) =>
-                  p.id === item.id ? item : p,
-                ),
-              }
-            })
+            setDb((prev) =>
+              prev
+                ? { ...prev, penjualan: perbaruiKoleksi(prev.penjualan, item) }
+                : prev,
+            )
           } else if (payload.eventType === 'DELETE') {
             const id = bacaIdLama(payload.old)
             if (!id) return
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                penjualan: prev.penjualan.filter((p) => p.id !== id),
-              }
-            })
+            setDb((prev) =>
+              prev
+                ? { ...prev, penjualan: prev.penjualan.filter((p) => p.id !== id) }
+                : prev,
+            )
           }
         },
       )
@@ -205,37 +298,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bahan' },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const item = mapBahanFromRow(payload.new as BahanRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              if (prev.bahan.some((b) => b.id === item.id)) {
-                return {
-                  ...prev,
-                  bahan: prev.bahan.map((b) => (b.id === item.id ? item : b)),
-                }
-              }
-              return { ...prev, bahan: [...prev.bahan, item] }
-            })
-          } else if (payload.eventType === 'UPDATE') {
-            const item = mapBahanFromRow(payload.new as BahanRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                bahan: prev.bahan.map((b) => (b.id === item.id ? item : b)),
-              }
-            })
+            setDb((prev) => (prev ? { ...prev, bahan: perbaruiKoleksi(prev.bahan, item) } : prev))
           } else if (payload.eventType === 'DELETE') {
             const id = bacaIdLama(payload.old)
             if (!id) return
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                bahan: prev.bahan.filter((b) => b.id !== id),
-              }
-            })
+            setDb((prev) =>
+              prev ? { ...prev, bahan: prev.bahan.filter((b) => b.id !== id) } : prev,
+            )
           }
         },
       )
@@ -243,37 +314,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'menu' },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const item = mapMenuFromRow(payload.new as MenuRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              if (prev.menu.some((m) => m.id === item.id)) {
-                return {
-                  ...prev,
-                  menu: prev.menu.map((m) => (m.id === item.id ? item : m)),
-                }
-              }
-              return { ...prev, menu: [...prev.menu, item] }
-            })
-          } else if (payload.eventType === 'UPDATE') {
-            const item = mapMenuFromRow(payload.new as MenuRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                menu: prev.menu.map((m) => (m.id === item.id ? item : m)),
-              }
-            })
+            setDb((prev) => (prev ? { ...prev, menu: perbaruiKoleksi(prev.menu, item) } : prev))
           } else if (payload.eventType === 'DELETE') {
             const id = bacaIdLama(payload.old)
             if (!id) return
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                menu: prev.menu.filter((m) => m.id !== id),
-              }
-            })
+            setDb((prev) =>
+              prev ? { ...prev, menu: prev.menu.filter((m) => m.id !== id) } : prev,
+            )
           }
         },
       )
@@ -289,30 +338,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'pengguna' },
+        { event: '*', schema: 'public', table: 'profiles' },
         (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const item = mapPenggunaFromRow(payload.new as PenggunaRow)
-            setDb((prev) => {
-              if (!prev) return prev
-              const ada = prev.users.some((u) => u.id === item.id)
-              return {
-                ...prev,
-                users: ada
-                  ? prev.users.map((u) => (u.id === item.id ? item : u))
-                  : [...prev.users, item],
+            const item = mapProfilFromRow(payload.new as ProfilRow)
+            setDb((prev) => (prev ? gabungProfilKeDb(prev, item) : prev))
+            if (item.id === profil.id) {
+              setProfil(item)
+              simpanCacheProfil(item)
+              if (!item.aktif) {
+                supabase!.auth.signOut().catch(console.error)
+                setProfil(null)
+                simpanCacheProfil(null)
               }
-            })
+            }
           } else if (payload.eventType === 'DELETE') {
             const id = bacaIdLama(payload.old)
             if (!id) return
-            setDb((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                users: prev.users.filter((u) => u.id !== id),
-              }
-            })
+            setDb((prev) =>
+              prev ? { ...prev, users: prev.users.filter((u) => u.id !== id) } : prev,
+            )
           }
         },
       )
@@ -324,56 +369,153 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setDb((prev) => {
             if (!prev) return prev
             if (prev.log.some((l) => l.id === item.id)) return prev
-            return {
-              ...prev,
-              log: [item, ...prev.log].slice(0, 250),
-            }
+            return { ...prev, log: [item, ...prev.log].slice(0, 250) }
           })
         },
       )
       .subscribe()
 
     return () => {
-      if (supabase) {
-        supabase.removeChannel(channel)
-      }
+      supabase?.removeChannel(channel)
     }
+  }, [profil?.id, profil?.aktif])
+
+  // ----------------------------------------------------------------------------
+  // 4. Sesi Auth berubah (login/logout/refresh)
+  // ----------------------------------------------------------------------------
+  useEffect(() => {
+    if (!apakahSupabaseAktif || !supabase) return
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setProfil(null)
+        simpanCacheProfil(null)
+        return
+      }
+      // INITIAL_SESSION bisa bernilai null saat offline (token kedaluwarsa
+      // tetapi refresh belum bisa dihubungi). Jangan hapus profil cache;
+      // kasir harus tetap bisa membuka aplikasi dan mencatat transaksi.
+      if (!session) return
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // Profil dimuat oleh alur login; di sini cukup pastikan cache ada.
+        if (!bacaCacheProfil() && session.user.id) {
+          ambilProfilCloud(session.user.id)
+            .then((p) => {
+              if (p?.aktif) {
+                setProfil(p)
+                simpanCacheProfil(p)
+              }
+            })
+            .catch(() => undefined)
+        }
+      }
+    })
+
+    return () => data.subscription.unsubscribe()
   }, [])
 
-  // 4. Interval background pemrosesan antrean outbox setiap 15 detik
+  // ----------------------------------------------------------------------------
+  // 5. Proses outbox berkala + reaksi terhadap konflik
+  // ----------------------------------------------------------------------------
   useEffect(() => {
-    if (!apakahSupabaseAktif) return
-
+    if (!apakahSupabaseAktif || !profil?.id) return undefined
     const interval = setInterval(() => {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        prosesAntreanOutbox().catch(console.error)
+        sinkronkanAwal()
+          .then((dataCloud) => {
+            if (dataCloud) setDb(dataCloud)
+          })
+          .catch(() => undefined)
       }
-    }, 15000)
-
+    }, 20000)
     return () => clearInterval(interval)
-  }, [])
+  }, [profil?.id])
 
+  useEffect(() => {
+    if (!profil?.id) return undefined
+    return langgananPeristiwaSinkron((peristiwa) => {
+      if (peristiwa.tipe !== 'perlu-sinkron-ulang') return
+      if (!apakahSupabaseAktif) return
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      sinkronkanAwal()
+        .then((dataCloud) => {
+          if (dataCloud) setDb(dataCloud)
+        })
+        .catch((error) => {
+          console.warn('[Banggala Stock] Sinkron ulang gagal:', error)
+        })
+    })
+  }, [profil?.id])
+
+  // ----------------------------------------------------------------------------
+  // 6. Aksi autentikasi
+  // ----------------------------------------------------------------------------
   const user = useMemo(() => {
+    if (apakahSupabaseAktif) return profil
     if (!db || !userId) return null
     return db.users.find((u) => u.id === userId && u.aktif) ?? null
-  }, [db, userId])
+  }, [db, userId, profil])
 
   const login = useCallback(
     async (username: string, password: string) => {
-      if (!db) throw new Error('Data belum siap. Coba lagi sebentar.')
       const bersih = username.trim().toLowerCase()
       if (!bersih || !password) {
         throw new Error('Username dan password wajib diisi.')
       }
+
+      if (apakahSupabaseAktif) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          throw new Error(
+            'Login membutuhkan koneksi internet. Gunakan perangkat yang sudah pernah login untuk membuka aplikasi secara offline.',
+          )
+        }
+
+        const { data, error } = await supabase!.auth.signInWithPassword({
+          email: emailDariUsername(bersih),
+          password,
+        })
+
+        if (error) {
+          if (/fetch|network|load failed/i.test(error.message)) {
+            throw new Error('Gagal terhubung ke server. Periksa koneksi internet.')
+          }
+          throw new Error('Username atau password salah.')
+        }
+        if (!data.user) throw new Error('Login gagal. Coba lagi.')
+
+        const profilCloud = await ambilProfilCloud(data.user.id)
+        if (!profilCloud) {
+          await supabase!.auth.signOut()
+          throw new Error('Akun belum memiliki profil. Hubungi admin.')
+        }
+        if (!profilCloud.aktif) {
+          await supabase!.auth.signOut()
+          throw new Error('Akun ini sedang dinonaktifkan.')
+        }
+
+        setProfil(profilCloud)
+        simpanCacheProfil(profilCloud)
+        setDb((prev) => (prev ? gabungProfilKeDb(prev, profilCloud) : prev))
+
+        sinkronkanAwal()
+          .then((dataCloud) => {
+            if (dataCloud) setDb(dataCloud)
+          })
+          .catch(console.error)
+        return
+      }
+
+      // --- Mode lokal (fallback tanpa Supabase) ---
+      if (!db) throw new Error('Data belum siap. Coba lagi sebentar.')
       const akun = db.users.find((u) => u.username.toLowerCase() === bersih)
-      if (!akun) throw new Error('Username atau password salah.')
+      if (!akun || !akun.salt || !akun.passwordHash) {
+        throw new Error('Username atau password salah.')
+      }
       if (!akun.aktif) throw new Error('Akun ini sedang dinonaktifkan.')
-      const cocok = await verifikasiPassword(
-        password,
-        akun.salt,
-        akun.passwordHash,
-      )
+
+      const cocok = await verifikasiPassword(password, akun.salt, akun.passwordHash)
       if (!cocok) throw new Error('Username atau password salah.')
+
       simpanSesi(akun.id)
       setUserId(akun.id)
     },
@@ -381,6 +523,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(() => {
+    if (apakahSupabaseAktif) {
+      supabase?.auth.signOut().catch(console.error)
+      setProfil(null)
+      simpanCacheProfil(null)
+      return
+    }
     hapusSesi()
     setUserId(null)
   }, [])
@@ -390,65 +538,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (passwordBaru.length < 6) {
         throw new Error('Password minimal 6 karakter.')
       }
+
+      if (apakahSupabaseAktif) {
+        if (!profil || id !== profil.id) {
+          throw new Error('Ganti password pengguna lain lewat halaman Pengguna.')
+        }
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          throw new Error('Ganti password membutuhkan koneksi internet.')
+        }
+        const { error } = await supabase!.auth.updateUser({ password: passwordBaru })
+        if (error) throw new Error(error.message || 'Gagal mengganti password.')
+        const sekarang = new Date().toISOString()
+        setProfil((prev) => (prev ? { ...prev, passwordChangedAt: sekarang } : prev))
+        simpanCacheProfil({ ...profil, passwordChangedAt: sekarang })
+        setDb((prev) =>
+          prev
+            ? {
+                ...prev,
+                users: prev.users.map((u) =>
+                  u.id === id ? { ...u, passwordChangedAt: sekarang } : u,
+                ),
+              }
+            : prev,
+        )
+        return
+      }
+
+      // --- Mode lokal ---
       const { salt, hash } = await buatPassword(passwordBaru)
-      let userDiperbarui: User | null = null
+      const sekarang = new Date().toISOString()
 
       setDb((prev) => {
         if (!prev) return prev
         const operator = prev.users.find((u) => u.id === userId)
-        const sekarang = new Date().toISOString()
-        const updatedUsers = prev.users.map((u) => {
-          if (u.id === id) {
-            userDiperbarui = {
-              ...u,
-              salt,
-              passwordHash: hash,
-              passwordChangedAt: sekarang,
-            }
-            return userDiperbarui
-          }
-          return u
-        })
-
+        const target = prev.users.find((u) => u.id === id)
         const logItem = {
-          id: uid('log'),
+          id: `log_${Date.now().toString(36)}`,
           at: sekarang,
           userId: userId ?? 'sistem',
           userName: operator?.nama ?? 'Sistem',
           aksi: 'Ganti password',
-          detail: `Password akun "${prev.users.find((u) => u.id === id)?.username ?? id}" diperbarui`,
+          detail: `Password akun "${target?.username ?? id}" diperbarui`,
         }
-
         return {
           ...prev,
-          users: updatedUsers,
+          users: prev.users.map((u) =>
+            u.id === id
+              ? { ...u, salt, passwordHash: hash, passwordChangedAt: sekarang }
+              : u,
+          ),
           log: [logItem, ...prev.log].slice(0, 250),
         }
       })
-
-      if (userDiperbarui && apakahSupabaseAktif) {
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
-          simpanPenggunaCloud(userDiperbarui).catch(() => {
-            antrekanAksi({
-              aksi: 'pengguna',
-              tipeOperasi: 'update',
-              payload: { user: userDiperbarui },
-            }).catch(console.error)
-          })
-        } else {
-          antrekanAksi({
-            aksi: 'pengguna',
-            tipeOperasi: 'update',
-            payload: { user: userDiperbarui },
-          }).catch(console.error)
-        }
-      }
     },
-    [userId],
+    [profil, userId],
   )
 
   const nilai = useMemo<AuthContextValue>(
-    () => ({ db, setDb, user, siap, login, logout, gantiPassword }),
+    () => ({
+      db,
+      setDb,
+      user,
+      siap,
+      modeOnline: apakahSupabaseAktif,
+      login,
+      logout,
+      gantiPassword,
+    }),
     [db, user, siap, login, logout, gantiPassword],
   )
 

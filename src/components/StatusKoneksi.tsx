@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
+  abaikanKonflik,
+  ambilSemuaAntrean,
+  cobaUlangKonflik,
   langgananStatusAntrean,
   prosesAntreanOutbox,
+  type OutboxItem,
 } from '../lib/outboxQueue'
 import { apakahSupabaseAktif, periksaKoneksiOnline } from '../lib/supabase'
 
@@ -11,17 +15,30 @@ export function StatusKoneksi() {
   )
   const [cloudTerhubung, setCloudTerhubung] = useState<boolean>(false)
   const [tertundaCount, setTertundaCount] = useState<number>(0)
+  const [konflikCount, setKonflikCount] = useState<number>(0)
   const [sedangSinkron, setSedangSinkron] = useState<boolean>(false)
   const [memeriksa, setMemeriksa] = useState<boolean>(false)
+  const [panelBuka, setPanelBuka] = useState(false)
+  const [daftarKonflik, setDaftarKonflik] = useState<OutboxItem[]>([])
+
+  const muatKonflik = useCallback(async () => {
+    const semua = await ambilSemuaAntrean()
+    setDaftarKonflik(semua.filter((item) => item.status === 'konflik'))
+  }, [])
 
   // 1. Langganan status outbox queue
   useEffect(() => {
-    const unsub = langgananStatusAntrean((jumlah, proses) => {
+    const unsub = langgananStatusAntrean((jumlah, proses, konflik) => {
       setTertundaCount(jumlah)
       setSedangSinkron(proses)
+      setKonflikCount(konflik)
     })
     return unsub
   }, [])
+
+  useEffect(() => {
+    if (panelBuka || konflikCount > 0) muatKonflik().catch(console.error)
+  }, [panelBuka, konflikCount, muatKonflik])
 
   // 2. Listener status jaringan window
   useEffect(() => {
@@ -41,12 +58,10 @@ export function StatusKoneksi() {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
-    // Cek konektivitas awal
     if (apakahSupabaseAktif && navigator.onLine) {
       periksaKoneksiOnline().then(setCloudTerhubung)
     }
 
-    // Interval ping ringan setiap 30 detik
     const pingInterval = setInterval(() => {
       if (apakahSupabaseAktif && navigator.onLine) {
         periksaKoneksiOnline().then(setCloudTerhubung)
@@ -65,20 +80,90 @@ export function StatusKoneksi() {
     setMemeriksa(true)
     try {
       if (apakahSupabaseAktif) {
-        const isOnline = await periksaKoneksiOnline()
-        setCloudTerhubung(isOnline)
-        if (isOnline) {
-          await prosesAntreanOutbox()
-        }
+        const statusOnline = await periksaKoneksiOnline()
+        setCloudTerhubung(statusOnline)
+        if (statusOnline) await prosesAntreanOutbox()
+        await muatKonflik()
       }
     } finally {
       setMemeriksa(false)
     }
   }
 
-  // Jika Supabase belum dikonfigurasi (.env kosong)
+  const cobaItem = async (id: string) => {
+    await cobaUlangKonflik(id)
+    await muatKonflik()
+  }
+
+  const buangItem = async (id: string) => {
+    await abaikanKonflik(id)
+    await muatKonflik()
+  }
+
+  const tombolKonflik = konflikCount > 0 && (
+    <button
+      type="button"
+      onClick={() => setPanelBuka((v) => !v)}
+      className="flex items-center gap-1.5 rounded-full border border-danger/40 bg-danger-soft px-2.5 py-1 text-[11px] font-semibold text-danger hover:bg-danger/10 transition-colors"
+      title={`${konflikCount} transaksi ditolak server dan menunggu keputusan admin.`}
+    >
+      <span className="size-2 rounded-full bg-danger" />
+      <span>{konflikCount} Konflik</span>
+    </button>
+  )
+
+  const panel = panelBuka && konflikCount > 0 && (
+    <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-white p-3 text-left shadow-xl shadow-espresso/10">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-bold text-espresso">Transaksi perlu tindakan</p>
+        <button
+          type="button"
+          className="text-muted hover:text-ink"
+          onClick={() => setPanelBuka(false)}
+          aria-label="Tutup"
+        >
+          ✕
+        </button>
+      </div>
+      <p className="mb-3 text-[10px] leading-relaxed text-muted">
+        Data ini <b>tidak dihapus</b>. Periksa stok, lalu coba kirim ulang atau
+        buang jika memang sudah tidak diperlukan.
+      </p>
+      <div className="max-h-64 space-y-2 overflow-y-auto">
+        {daftarKonflik.map((item) => (
+          <div key={item.id} className="rounded-lg border border-line bg-cream/60 p-2">
+            <p className="text-[11px] font-semibold text-ink">
+              {item.aksi} · {new Date(item.createdAt).toLocaleString('id-ID')}
+            </p>
+            <p className="mt-0.5 text-[10px] leading-snug text-danger">
+              {item.lastError ?? 'Ditolak server.'}
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => cobaItem(item.id)}
+              >
+                Coba lagi
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-danger"
+                onClick={() => buangItem(item.id)}
+              >
+                Buang
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  let tombol: ReactNode
+
   if (!apakahSupabaseAktif) {
-    return (
+    tombol = (
       <div
         className="flex items-center gap-1.5 rounded-full border border-line bg-cream/70 px-2.5 py-1 text-[11px] font-medium text-muted"
         title="Supabase belum dikonfigurasi. Data tersimpan lokal di browser ini."
@@ -87,11 +172,8 @@ export function StatusKoneksi() {
         <span className="hidden sm:inline">Mode Lokal</span>
       </div>
     )
-  }
-
-  // Jika sedang menyinkronkan data antrean
-  if (sedangSinkron || memeriksa) {
-    return (
+  } else if (sedangSinkron || memeriksa) {
+    tombol = (
       <button
         type="button"
         disabled
@@ -120,11 +202,8 @@ export function StatusKoneksi() {
         <span>Menyinkronkan…</span>
       </button>
     )
-  }
-
-  // Jika offline atau ada antrean tertunda
-  if (!online || !cloudTerhubung || tertundaCount > 0) {
-    return (
+  } else if (!online || !cloudTerhubung || tertundaCount > 0) {
+    tombol = (
       <button
         type="button"
         onClick={sinkronManual}
@@ -148,19 +227,26 @@ export function StatusKoneksi() {
         </span>
       </button>
     )
+  } else {
+    tombol = (
+      <button
+        type="button"
+        onClick={sinkronManual}
+        className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success transition-colors hover:bg-success/20"
+        title="Terhubung ke cloud database Supabase secara real-time. Klik untuk cek koneksi."
+      >
+        <span className="size-2 rounded-full bg-success" />
+        <span className="hidden sm:inline">Online (Tersinkron)</span>
+        <span className="sm:hidden">Online</span>
+      </button>
+    )
   }
 
-  // Kondisi Online & Tersinkronisasi Penuh
   return (
-    <button
-      type="button"
-      onClick={sinkronManual}
-      className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success transition-colors hover:bg-success/20"
-      title="Terhubung ke cloud database Supabase secara real-time. Klik untuk cek koneksi."
-    >
-      <span className="size-2 rounded-full bg-success" />
-      <span className="hidden sm:inline">Online (Tersinkron)</span>
-      <span className="sm:hidden">Online</span>
-    </button>
+    <div className="relative flex items-center gap-2">
+      {tombol}
+      {apakahSupabaseAktif && tombolKonflik}
+      {panel}
+    </div>
   )
 }

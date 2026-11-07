@@ -1,154 +1,158 @@
 # Banggala Stock
 
-Sistem pencatatan **stok bahan**, **menu & resep**, dan **penjualan** untuk **Kedai Kopi Banggala**.
-Aplikasi web multi-perangkat berbasis **Supabase Cloud (PostgreSQL + Realtime WebSocket)** dengan arsitektur **Hybrid Offline-First**. Kasir di kedai tetap dapat mencatat penjualan saat internet putus sementara melalui antrean sinkronisasi lokal (IndexedDB outbox queue), sementara pemilik dapat memantau pergerakan stok dan transaksi secara real-time dari perangkat mana pun.
+Sistem pencatatan **stok bahan**, **menu & resep**, dan **penjualan** untuk
+**Kedai Kopi Banggala**.
 
-Fokus **stok saja**: tidak ada perhitungan harga, HPP, omzet, laba, atau margin. Penjualan mencatat item + jumlah dan otomatis memotong stok bahan sesuai resep.
+Aplikasi web multi-perangkat dengan dua mode:
+
+1. **Mode Online (disarankan)** — Supabase Cloud (PostgreSQL + Auth + Realtime),
+   dapat dipakai beberapa perangkat sekaligus dengan data stok yang sama.
+2. **Mode Lokal** — tanpa konfigurasi apa pun; data tersimpan di browser
+   perangkat (`localStorage`) dengan login PBKDF2.
+
+Keduanya **offline-first**: perubahan langsung tampil di layar, lalu disinkronkan
+saat internet tersedia. Fokus **stok saja** — tidak ada harga, HPP, margin,
+omzet, laba, atau nilai inventaris. Penjualan mencatat item + jumlah dan
+memotong stok bahan sesuai resep.
+
+> Panduan setup online lengkap: [`supabase/PANDUAN.md`](supabase/PANDUAN.md).
 
 ---
 
-## Fitur Utama
+## Fitur
 
 | Modul | Deskripsi |
-|-------|-----------|
-| **Multi-Perangkat & Realtime** | Terhubung ke cloud database Supabase; perubahan stok dan transaksi tersinkronisasi otomatis antar-perangkat secara instan via WebSocket. |
-| **Hybrid Offline-First** | Startup instan (< 50ms) dari cache lokal browser; transaksi offline tersimpan di antrean IndexedDB (`banggala_outbox_db`) dan otomatis terkirim saat internet pulih. |
-| **Indikator Koneksi** | Status koneksi di navbar: 🟢 *Online (Tersinkron)*, 🟡 *Offline (N Tertunda)*, 🔄 *Menyinkronkan…*, atau ⚪ *Mode Lokal*. |
-| **Migrasi 1-Klik** | Tombol di Pengaturan untuk memindahkan seluruh data katalog, bahan, stok, dan riwayat transaksi lokal ke database Supabase Cloud. |
-| **Login & Keamanan** | Multi-user (Admin / Staf). Password di-hash aman dengan algoritma PBKDF2 (SHA-256, salt per akun). |
-| **Dashboard** | Status buka/tutup kedai (WIB), statistik bahan/penjualan/mutasi hari ini, grafik 7 hari, daftar restock, transaksi terbaru. |
-| **Bahan & Stok** | Tambah/ubah/arsip bahan; kategori & satuan kustom; stok minimum; status stok (Aman / Menipis / Habis). |
-| **Menu & Resep** | 28 menu katalog Kedai Kopi Banggala + resep estimasi yang bisa diedit; menu tanpa resep boleh dijual (stok tidak terpotong, diberi peringatan); Export CSV. |
-| **Penjualan** | Catat multi-item; validasi stok real-time (tolak jika tidak cukup); nomor otomatis `PJ-YYYYMMDD-XXX`; Admin bisa edit/hapus → stok dihitung ulang. |
-| **Mutasi Stok** | Masuk/keluar manual (pembelian, rusak, sample, koreksi, dsb); validasi stok tidak negatif. |
-| **Laporan** | Periode preset/kustom; ringkasan per bahan; rekap menu terjual; detail mutasi; Export 3 CSV (titik koma); Cetak (A4 landscape). |
-| **Pengaturan & Backup** | Identitas kedai; jam operasional mingguan; keamanan akun; Backup/Restore JSON; Reset data operasional; Log aktivitas audit. |
+| --- | --- |
+| **Multi-perangkat & realtime** | Data yang sama di semua perangkat; perubahan tampil otomatis via Supabase Realtime. |
+| **Offline-first** | Cache lokal untuk startup instan; transaksi offline masuk antrean IndexedDB dan dikirim otomatis saat online. |
+| **PWA** | Bisa dipasang ke home screen dan dibuka tanpa internet setelah pernah dibuka. |
+| **Indikator koneksi** | Online / Offline (N tertunda) / Menyinkronkan / Mode Lokal, plus panel **Konflik**. |
+| **Login aman** | Online: Supabase Auth (`username@banggala.local`) + profil ber-RLS. Lokal: PBKDF2. |
+| **Kelola staf** | Admin dapat menambah akun, ubah nama/role, menonaktifkan, dan reset password (via Edge Function). |
+| **Dashboard** | Status buka/tutup kedai (WIB), ringkasan bahan/penjualan/mutasi hari ini, grafik 7 hari, restock, transaksi terbaru. |
+| **Bahan & stok** | Tambah/ubah/arsip bahan; kategori & satuan kustom; stok minimum; status Aman/Menipis/Habis. |
+| **Menu & resep** | Katalog menu + resep estimasi yang bisa diedit; menu tanpa resep tetap bisa dijual tetapi stok tidak terpotong dan diberi penanda. |
+| **Penjualan** | Multi-item; server menolak bila stok tidak cukup; nomor otomatis `PJ-YYYYMMDD-XXX`; admin bisa edit/hapus dan stok dihitung ulang. |
+| **Mutasi stok** | Masuk/keluar manual; stok tidak boleh negatif. |
+| **Laporan** | Periode preset/kustom, rekap bahan & menu, detail mutasi, ekspor CSV, cetak. |
+| **Pengaturan & backup** | Identitas kedai, jam operasional, keamanan akun, backup/restore JSON, reset data, log aktivitas. |
 
 ---
 
-## Konfigurasi Supabase Cloud
+## Menjalankan Cepat
 
-Aplikasi dapat dijalankan dalam **Mode Lokal** (tanpa konfigurasi apa pun) atau dalam **Mode Cloud Multi-Perangkat** menggunakan Supabase BaaS (tersedia tier gratis).
+Prasyarat: **Node.js 20+**.
 
-### 1. Buat Proyek di Supabase
-1. Buka [supabase.com](https://supabase.com) dan buat proyek baru (misal: `banggala-stock`).
-2. Tentukan password basis data dan pilih region terdekat (misal: `Singapore`).
-
-### 2. Jalankan Skema SQL Basis Data
-1. Di dashboard Supabase, buka menu **SQL Editor**.
-2. Buka file [`supabase/schema.sql`](supabase/schema.sql) dari repositori ini, salin seluruh kodenya, dan tempelkan ke SQL Editor Supabase.
-3. Klik tombol **Run**. Seluruh tabel (`pengaturan`, `pengguna`, `bahan`, `menu`, `mutasi`, `penjualan`, `log_aktivitas`), indeks, kebijakan RLS, dan publikasi Realtime akan dibuat otomatis.
-
-### 3. Salin API Credentials
-1. Buka **Project Settings** → **API**.
-2. Salin **Project URL** dan **Project API Keys** (`anon` public key).
-
----
-
-## Menjalankan di Komputer Lokal
-
-Prasyarat: **Node.js 20+** dan npm.
-
-### 1. Salin File Environment
-```bash
-cp .env.example .env
-```
-Buka file `.env` dan isi dengan kredensial Supabase Anda:
-```env
-VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-*(Catatan: Jika `.env` dibiarkan kosong atau belum diisi, aplikasi otomatis berjalan dalam mode demo offline-lokal).*
-
-### 2. Instalasi & Menjalankan Server Dev
 ```bash
 npm install
 npm run dev
 ```
-Buka <http://localhost:5173> di browser.
 
-### 3. Akun Awal
-| Username | Password   | Role  |
-| -------- | ---------- | ----- |
-| `admin`  | `admin123` | Admin |
+Buka <http://localhost:5173>.
 
-> Segera ubah password lewat **Pengaturan → Keamanan Akun** setelah login pertama.
+### Mode lokal (tanpa Supabase)
 
-### 4. Migrasi Data Lokal ke Cloud (1-Klik)
-Jika Anda memiliki data katalog atau transaksi di browser lokal dan ingin mengunggahnya ke Supabase:
-1. Masuk sebagai akun **Admin**.
-2. Masuk ke halaman **Pengaturan** → bagian **Data & Backup**.
-3. Di kartu **Supabase Cloud Database**, klik tombol **"Migrasikan Data Lokal ke Cloud"**.
-4. Tunggu progress bar selesai (100%). Seluruh data lokal kini aktif di Supabase dan siap diakses dari perangkat lain!
+Biarkan `.env` kosong. Login awal:
+
+| Username | Password | Role |
+| --- | --- | --- |
+| `admin` | `admin123` | Admin |
+
+> Segera ganti password lewat **Pengaturan → Keamanan Akun**.
+> Data lokal tersimpan di `localStorage` browser perangkat itu saja.
+
+### Mode online (Supabase)
+
+1. Buat proyek Supabase.
+2. Jalankan [`supabase/schema.sql`](supabase/schema.sql) di SQL Editor.
+3. Atur Auth (matikan sign up & konfirmasi email, set Site URL).
+4. Buat admin pertama, lalu deploy Edge Function `admin-pengguna`.
+5. Salin `.env.example` → `.env` dan isi:
+
+```env
+VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+6. Jalankan `npm run dev`, lalu login memakai akun cloud.
+
+Detail langkah, migrasi data lokal, dan troubleshooting ada di
+**[`supabase/PANDUAN.md`](supabase/PANDUAN.md)**.
 
 ---
 
-## Deployment ke Cloud (Vercel / Cloudflare Pages)
+## Deployment
 
-Aplikasi dibangun menggunakan **HashRouter** (`/#/`), sehingga dapat di-deploy ke platform hosting statis apa pun tanpa memerlukan konfigurasi URL rewrite server.
+Aplikasi memakai `HashRouter`, sehingga cocok untuk hosting statis tanpa rewrite.
 
-### Deploy ke Vercel
-1. Hubungkan repositori GitHub ke [vercel.com](https://vercel.com).
-2. Konfigurasi proyek:
-   - **Framework Preset**: Vite
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-3. Tambahkan **Environment Variables**:
-   - `VITE_SUPABASE_URL` = `https://your-project.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY` = `your-anon-key`
-4. Klik **Deploy**.
+**Vercel**
 
-### Deploy ke Cloudflare Pages
-1. Di dashboard Cloudflare Pages, pilih **Create a project** → **Connect to Git**.
-2. Konfigurasi build:
-   - **Framework preset**: None / Vite
-   - **Build command**: `npm run build`
-   - **Build output directory**: `dist`
-3. Di bagian **Environment variables**, tambahkan `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY`.
-4. Klik **Save and Deploy**.
+- Framework: Vite
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Environment Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- Setelah domain jadi, perbarui **Site URL** di Supabase Auth.
+- Service worker hanya aktif pada build produksi.
+
+Tanpa environment variable, hasil build otomatis berjalan dalam mode lokal.
 
 ---
 
 ## Hak Akses
 
+Tabel berikut adalah hak akses **mode online** (ditegakkan server oleh RLS).
+Mode lokal tetap berjalan tanpa Supabase dan menggunakan pemeriksaan aplikasi
+lokal.
+
 | Kemampuan | Admin | Staf |
-|-----------|:----:|:----:|
+| --- | :---: | :---: |
 | Dashboard, stok, laporan | ✓ | ✓ |
 | Catat stok masuk/keluar | ✓ | ✓ |
-| Tambah/ubah bahan & menu | ✓ | ✓ |
-| Catat transaksi penjualan | ✓ | ✓ |
+| Catat penjualan | ✓ | ✓ |
+| Tambah/ubah bahan & menu | ✓ | – |
 | Arsipkan bahan/menu | ✓ | – |
 | Ubah/hapus mutasi manual | ✓ | – |
-| **Edit/hapus penjualan** | ✓ | – |
-| Kelola pengguna & staf | ✓ | – |
-| Pengaturan kedai, migrasi cloud, reset data | ✓ | – |
+| Edit/hapus penjualan | ✓ | – |
+| Kelola pengguna & reset password | ✓ | – |
+| Pengaturan kedai, migrasi, reset data | ✓ | – |
+
+Pada mode online, aturan ini juga ditegakkan di server melalui RLS dan RPC.
+Transaksi (`penjualan`, `mutasi`, counter nomor) **tidak dapat ditulis langsung**
+oleh klien; semuanya lewat RPC yang memvalidasi stok dan identitas.
 
 ---
 
-## Arsitektur Hybrid Offline-First
+## Arsitektur Sinkronisasi
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                   Aplikasi React UI                   │
-│  (Optimistic Update seketika: State memori + Storage)  │
-└───────────────┬────────────────────────┬───────────────┘
-                │                        │
-       [Jika Online]               [Jika Offline]
-                │                        │
-                ▼                        ▼
-     ┌─────────────────────┐   ┌──────────────────────┐
-     │   Supabase Client   │   │  IndexedDB Outbox    │
-     │  (Postgres Cloud)   │   │ (banggala_outbox_db) │
-     └──────────▲──────────┘   └──────────┬───────────┘
-                │                         │
-                │        Auto Sync saat   │
-                └──────── koneksi pulih ──┘
+        Aksi pengguna
+             │
+             ▼
+   State lokal + localStorage   ← tampilan langsung (optimistic)
+             │
+      ┌──────┴───────┐
+      │              │
+   Online         Offline
+      │              │
+      ▼              ▼
+ RPC Supabase   Outbox IndexedDB
+ (nomor & stok  (tidak pernah
+  dari server)   dibuang)
+      │              │
+      └──────┬───────┘
+             ▼
+   Realtime → perangkat lain
 ```
 
-1. **Local-First Speed**: Setiap pencatatan penjualan atau mutasi stok langsung memperbarui tampilan antarmuka seketika tanpa menunggu latensi jaringan server.
-2. **Resilience**: Jika internet kedai mati, transaksi masuk ke antrean IndexedDB (`banggala_outbox_db`) dan ditandai dengan badge *Offline (N Tertunda)* di navbar.
-3. **Auto Recovery**: Begitu koneksi internet tersambung kembali (`online` event), antrean outbox secara otomatis dikirim berurutan (FIFO) ke Supabase dan navbar kembali hijau *Online (Tersinkron)*.
-4. **Realtime Multi-Device**: Menggunakan Supabase Realtime channel WebSocket. Saat kasir mencatat transaksi di laptop kedai, pemilik yang membuka aplikasi di smartphone otomatis melihat mutasi stok terpotong tanpa perlu me-refresh halaman.
+Urutan startup:
+
+1. Tampilkan cache lokal.
+2. Kirim antrean outbox yang tertunda.
+3. Tarik snapshot cloud (agar data offline tidak tertimpa).
+
+Bila server menolak transaksi (mis. stok sudah habis di perangkat lain), item
+**tidak dihapus** dari outbox. Item ditandai **konflik** dan admin dapat memilih
+**Coba lagi** atau **Buang** dari panel di navbar.
 
 ---
 
@@ -156,42 +160,48 @@ Aplikasi dibangun menggunakan **HashRouter** (`/#/`), sehingga dapat di-deploy k
 
 ```
 .
-├─ .env.example              # Template variabel lingkungan Supabase
-├─ index.html
-├─ package.json
-├─ vite.config.ts
-├─ tsconfig.json
+├─ .env.example                 # Template kredensial Supabase
+├─ index.html                   # Meta PWA
+├─ vite.config.ts               # Vite + PWA (manifest, precache, NetworkOnly Supabase)
 ├─ supabase/
-│  └─ schema.sql             # DDL PostgreSQL + RLS + Realtime Publication
+│  ├─ schema.sql                # Tabel, RLS, RPC, trigger, realtime
+│  ├─ PANDUAN.md                # Panduan setup online
+│  └─ functions/
+│     └─ admin-pengguna/
+│        └─ index.ts            # Edge Function kelola akun staf
 └─ src/
-   ├─ main.tsx               # Entry point
-   ├─ App.tsx                # HashRouter routing
-   ├─ styles.css             # Tema Tailwind CSS v4
-   ├─ types.ts               # Interface TypeScript
+   ├─ main.tsx                  # Entry point + registrasi PWA
+   ├─ App.tsx                   # HashRouter
+   ├─ types.ts
    ├─ context/
-   │  ├─ AuthContext.tsx     # Hybrid startup, login PBKDF2, Supabase Realtime
-   │  ├─ DataContext.tsx     # Operasi data bisnis + sync cloud + outbox
-   │  └─ ToastContext.tsx    # Notifikasi toast
+   │  ├─ AuthContext.tsx        # Auth dual-mode, cache sesi, realtime, outbox
+   │  ├─ DataContext.tsx        # Aksi data + RPC/outbox + konflik
+   │  └─ ToastContext.tsx       # Notifikasi + penolakan server
    ├─ lib/
-   │  ├─ supabase.ts         # Inisialisasi klien Supabase & graceful fallback
-   │  ├─ cloudDb.ts          # Lapisan konversi schema (snake_case ↔ camelCase)
-   │  ├─ outboxQueue.ts      # IndexedDB offline outbox queue & auto-processor
-   │  ├─ seed.ts             # Data inisialisasi awal
-   │  ├─ storage.ts          # Cache localStorage
-   │  ├─ auth.ts             # Enkripsi password PBKDF2
-   │  ├─ stock.ts            # Logika kalkulasi stok
-   │  ├─ menu.ts             # Logika resep & ketersediaan bahan
-   │  ├─ operasional.ts      # Jam operasional resmi kedai
-   │  ├─ dataAwal.ts         # 28 menu katalog & 36 bahan bawaan kedai
-   │  ├─ format.ts           # Format angka & tanggal Indonesia
-   │  ├─ csv.ts              # Ekspor CSV & JSON
-   │  └─ id.ts               # Generator ID acak aman
+   │  ├─ supabase.ts            # Klien Supabase & deteksi mode
+   │  ├─ cloudDb.ts             # Mapper snake_case ↔ camelCase + snapshot
+   │  ├─ rpc.ts                 # Wrapper RPC + pemetaan error Indonesia
+   │  ├─ outboxQueue.ts         # Antrean IndexedDB, retry, konflik
+   │  ├─ sinkron.ts             # Orkestrasi startup & sinkronisasi
+   │  ├─ peristiwa.ts           # Event bus sinkronisasi
+   │  ├─ edgeAdmin.ts           # Klien Edge Function admin
+   │  ├─ seed.ts                # Data awal
+   │  ├─ storage.ts             # Cache localStorage + normalisasi
+   │  ├─ auth.ts                # PBKDF2 (mode lokal)
+   │  ├─ stock.ts               # Perhitungan stok
+   │  ├─ menu.ts                # Resep & ketersediaan bahan
+   │  ├─ operasional.ts         # Jam operasional kedai
+   │  ├─ dataAwal.ts            # Katalog menu & bahan bawaan
+   │  ├─ format.ts              # Format angka & tanggal Indonesia
+   │  ├─ csv.ts                 # Ekspor CSV/JSON
+   │  └─ id.ts                  # Generator ID
    ├─ components/
-   │  ├─ Layout.tsx          # Shell navigasi & header bar
-   │  ├─ StatusKoneksi.tsx   # Indikator status koneksi online/offline/sync
-   │  ├─ ProtectedRoute.tsx  # Proteksi otentikasi rute
-   │  ├─ Icons.tsx           # Ikon SVG
-   │  └─ ui/                 # Komponen modal, form, badge
+   │  ├─ Layout.tsx
+   │  ├─ StatusKoneksi.tsx      # Status online/offline + panel konflik
+   │  ├─ PembaruanAplikasi.tsx  # Prompt versi baru & siap offline
+   │  ├─ ProtectedRoute.tsx
+   │  ├─ Icons.tsx
+   │  └─ ui/
    └─ pages/
       ├─ LoginPage.tsx
       ├─ DashboardPage.tsx
@@ -201,8 +211,29 @@ Aplikasi dibangun menggunakan **HashRouter** (`/#/`), sehingga dapat di-deploy k
       ├─ MutasiPage.tsx
       ├─ LaporanPage.tsx
       ├─ PenggunaPage.tsx
-      └─ PengaturanPage.tsx  # Pengaturan kedai & kartu migrasi cloud
+      └─ PengaturanPage.tsx
 ```
+
+---
+
+## Perintah
+
+```bash
+npm run dev        # server pengembangan (PWA nonaktif)
+npm run typecheck  # cek TypeScript
+npm run build      # typecheck + build produksi (dist + service worker)
+npm run preview    # pratinjau hasil build (PWA aktif)
+```
+
+---
+
+## Catatan Keamanan
+
+- **anon key** memang publik; keamanan data dijaga oleh RLS ketat.
+- **service_role key** hanya ada di Edge Function, tidak pernah dikirim ke browser.
+- Hash password tidak pernah disimpan di cloud; autentikasi ditangani Supabase Auth.
+- Akun yang dinonaktifkan tidak bisa login dan sesinya diputus.
+- Backup JSON berisi data bisnis, bukan password.
 
 ---
 

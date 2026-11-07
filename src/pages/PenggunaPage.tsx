@@ -170,7 +170,7 @@ export function PenggunaPage() {
         pengguna={diedit}
         onSimpan={async (data) => {
           if (diedit) {
-            ubahUser(diedit.id, {
+            await ubahUser(diedit.id, {
               nama: data.nama,
               role: data.role,
               aktif: data.aktif,

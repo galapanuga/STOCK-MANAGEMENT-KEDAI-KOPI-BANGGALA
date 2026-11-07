@@ -127,16 +127,18 @@ export function PenjualanPage() {
         judul="Penjualan"
         deskripsi="Catat menu terjual. Stok bahan otomatis berkurang sesuai resep — tanpa perhitungan omzet."
         aksi={
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setDiedit(null)
-              setModalBuka(true)
-            }}
-          >
-            <IconPlus className="size-4" />
-            Catat Penjualan
-          </button>
+          user ? (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setDiedit(null)
+                setModalBuka(true)
+              }}
+            >
+              <IconPlus className="size-4" />
+              Catat Penjualan
+            </button>
+          ) : undefined
         }
       />
 
@@ -229,7 +231,7 @@ export function PenjualanPage() {
             judul="Belum ada penjualan"
             pesan="Catat transaksi pertama; stok bahan akan otomatis berkurang."
             ikon={<IconReceipt className="size-5" />}
-            aksi={
+            aksi={user ? (
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {
@@ -239,7 +241,7 @@ export function PenjualanPage() {
               >
                 <IconPlus className="size-3.5" /> Catat penjualan
               </button>
-            }
+            ) : undefined}
           />
         ) : (
           <>

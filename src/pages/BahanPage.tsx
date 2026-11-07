@@ -25,10 +25,12 @@ const GAYA_BAR: Record<StatusStok, string> = {
 }
 
 export function BahanPage() {
-  const { user } = useAuth()
+  const { user, modeOnline } = useAuth()
   const { db, stok, tambahBahan, ubahBahan, arsipBahan } = useData()
   const toast = useToast()
   const [params] = useSearchParams()
+  // Master data (bahan) hanya dikelola admin, sama seperti policy RLS di cloud.
+  const bolehKelola = !modeOnline || user?.role === 'admin'
 
   const [cari, setCari] = useState('')
   const [kategori, setKategori] = useState('semua')
@@ -95,10 +97,12 @@ export function BahanPage() {
         judul="Bahan & Stok"
         deskripsi="Kelola daftar bahan kedai, stok minimum, dan pantau persediaan tanpa perhitungan uang."
         aksi={
-          <button className="btn btn-primary" onClick={bukaTambah}>
-            <IconPlus className="size-4" />
-            Tambah Bahan
-          </button>
+          bolehKelola ? (
+            <button className="btn btn-primary" onClick={bukaTambah}>
+              <IconPlus className="size-4" />
+              Tambah Bahan
+            </button>
+          ) : undefined
         }
       />
 
@@ -172,9 +176,11 @@ export function BahanPage() {
             }
             ikon={<IconBox className="size-5" />}
             aksi={
-              <button className="btn btn-primary btn-sm" onClick={bukaTambah}>
-                <IconPlus className="size-3.5" /> Tambah bahan
-              </button>
+              bolehKelola ? (
+                <button className="btn btn-primary btn-sm" onClick={bukaTambah}>
+                  <IconPlus className="size-3.5" /> Tambah bahan
+                </button>
+              ) : undefined
             }
           />
         ) : (
@@ -226,16 +232,16 @@ export function BahanPage() {
                         <BadgeStok status={info.status} />
                       </td>
                       <td>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => bukaEdit(b)}
-                            title="Ubah bahan"
-                          >
-                            <IconEdit className="size-3.5" />
-                            <span className="hidden sm:inline">Ubah</span>
-                          </button>
-                          {user?.role === 'admin' && (
+                        {bolehKelola ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => bukaEdit(b)}
+                              title="Ubah bahan"
+                            >
+                              <IconEdit className="size-3.5" />
+                              <span className="hidden sm:inline">Ubah</span>
+                            </button>
                             <button
                               className="btn btn-ghost btn-sm"
                               onClick={() => setTargetArsip(b)}
@@ -247,8 +253,10 @@ export function BahanPage() {
                                 <IconArchive className="size-3.5" />
                               )}
                             </button>
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <p className="text-right text-xs text-muted">—</p>
+                        )}
                       </td>
                     </tr>
                   )

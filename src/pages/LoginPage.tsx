@@ -10,7 +10,7 @@ import {
 } from '../components/Icons'
 
 export function LoginPage() {
-  const { login, user, db } = useAuth()
+  const { login, user, db, modeOnline } = useAuth()
   const navigate = useNavigate()
   const lokasi = useLocation()
   const dari = (lokasi.state as { dari?: string } | null)?.dari ?? '/'
@@ -219,31 +219,45 @@ export function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 rounded-xl border border-dashed border-line bg-white/60 p-3.5">
-            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide text-mocha uppercase">
-              <IconShield className="size-3.5" />
-              Akun awal
+          {!modeOnline && (
+            <div className="mt-6 rounded-xl border border-dashed border-line bg-white/60 p-3.5">
+              <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide text-mocha uppercase">
+                <IconShield className="size-3.5" />
+                Akun awal
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                Username <span className="font-semibold text-coffee">admin</span> ·
+                Password <span className="font-semibold text-coffee">admin123</span>
+              </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-muted/80">
+                Berlaku jika password belum pernah diubah.
+              </p>
+              <button
+                type="button"
+                onClick={isiDemo}
+                className="mt-2 text-xs font-semibold text-caramel underline-offset-2 hover:underline"
+              >
+                Isi otomatis
+              </button>
             </div>
-            <p className="mt-1.5 text-xs leading-relaxed text-muted">
-              Username <span className="font-semibold text-coffee">admin</span> ·
-              Password <span className="font-semibold text-coffee">admin123</span>
-            </p>
-            <p className="mt-1 text-[10px] leading-relaxed text-muted/80">
-              Berlaku jika password belum pernah diubah.
-            </p>
-            <button
-              type="button"
-              onClick={isiDemo}
-              className="mt-2 text-xs font-semibold text-caramel underline-offset-2 hover:underline"
-            >
-              Isi otomatis
-            </button>
-          </div>
+          )}
+
+          {modeOnline && typeof navigator !== 'undefined' && !navigator.onLine && (
+            <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-3 text-xs leading-relaxed text-warning-strong">
+              <IconAlert className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Perangkat sedang offline. Login baru membutuhkan internet. Jika
+                sesi masih tersimpan, buka aplikasi ini langsung tanpa login.
+              </span>
+            </div>
+          )}
 
           <p className="mt-7 text-center text-[11px] leading-relaxed text-muted">
             Lupa password? Hubungi admin kedai untuk reset akun.
             <br />
-            Data disimpan aman di browser perangkat ini.
+            {modeOnline
+              ? 'Akun dikelola admin · data tersinkron ke cloud.'
+              : 'Data disimpan aman di browser perangkat ini.'}
           </p>
         </div>
       </section>

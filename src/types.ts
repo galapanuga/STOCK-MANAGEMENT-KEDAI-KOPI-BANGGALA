@@ -5,8 +5,10 @@ export interface User {
   username: string
   nama: string
   role: Role
-  passwordHash: string
-  salt: string
+  /** Hanya dipakai pada mode lokal (PBKDF2). Tidak pernah dikirim ke cloud. */
+  passwordHash?: string
+  salt?: string
+  email?: string
   aktif: boolean
   createdAt: string
   passwordChangedAt?: string
@@ -19,8 +21,6 @@ export interface Mutasi {
   bahanId: string
   tipe: MutasiTipe
   jumlah: number
-  /** Warisan data v1 — tidak dipakai lagi di UI (fokus stok). */
-  hargaSatuan?: number
   alasan?: string
   keterangan?: string
   /** ISO string (datetime lokal) */
@@ -51,8 +51,6 @@ export interface Menu {
   id: string
   nama: string
   kategori: string
-  /** Harga katalog warisan web profil — tidak ditampilkan (fokus stok). */
-  harga?: number
   deskripsi?: string
   resep: ResepItem[]
   /** Resep contoh/estimasi, bukan resep resmi kedai. */
@@ -66,10 +64,6 @@ export interface ItemPenjualan {
   /** Snapshot nama saat transaksi dibuat. */
   nama: string
   jumlah: number
-  /** Warisan snapshot harga — tidak ditampilkan. */
-  harga?: number
-  /** Warisan snapshot HPP — tidak ditampilkan. */
-  hppSatuan?: number
 }
 
 export interface Penjualan {
@@ -78,10 +72,6 @@ export interface Penjualan {
   /** ISO string */
   tanggal: string
   items: ItemPenjualan[]
-  /** Warisan data — tidak ditampilkan (fokus stok). */
-  omzet?: number
-  hpp?: number
-  laba?: number
   catatan?: string
   /** false bila ada item menu tanpa resep (stok tidak terpotong penuh). */
   stokTerpotong: boolean

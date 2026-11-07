@@ -25,9 +25,11 @@ interface BarisResep {
 }
 
 export function MenuPage() {
-  const { user } = useAuth()
+  const { user, modeOnline } = useAuth()
   const { db, bahanMap, tambahMenu, ubahMenu, arsipMenu } = useData()
   const toast = useToast()
+  // Katalog & resep hanya dikelola admin, sama seperti policy RLS di cloud.
+  const bolehKelola = !modeOnline || user?.role === 'admin'
 
   const [cari, setCari] = useState('')
   const [kategori, setKategori] = useState('semua')
@@ -106,16 +108,18 @@ export function MenuPage() {
               <IconDownload className="size-4" />
               Export CSV
             </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setDiedit(null)
-                setModalBuka(true)
-              }}
-            >
-              <IconPlus className="size-4" />
-              Tambah Menu
-            </button>
+            {bolehKelola && (
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setDiedit(null)
+                  setModalBuka(true)
+                }}
+              >
+                <IconPlus className="size-4" />
+                Tambah Menu
+              </button>
+            )}
           </>
         }
       />
@@ -179,15 +183,17 @@ export function MenuPage() {
             }
             ikon={<IconBook className="size-5" />}
             aksi={
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => {
-                  setDiedit(null)
-                  setModalBuka(true)
-                }}
-              >
-                <IconPlus className="size-3.5" /> Tambah menu
-              </button>
+              bolehKelola ? (
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    setDiedit(null)
+                    setModalBuka(true)
+                  }}
+                >
+                  <IconPlus className="size-3.5" /> Tambah menu
+                </button>
+              ) : undefined
             }
           />
         ) : (
@@ -244,19 +250,19 @@ export function MenuPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => {
-                            setDiedit(m)
-                            setModalBuka(true)
-                          }}
-                          title="Ubah menu"
-                        >
-                          <IconEdit className="size-3.5" />
-                          <span className="hidden sm:inline">Ubah</span>
-                        </button>
-                        {user?.role === 'admin' && (
+                      {bolehKelola ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              setDiedit(m)
+                              setModalBuka(true)
+                            }}
+                            title="Ubah menu"
+                          >
+                            <IconEdit className="size-3.5" />
+                            <span className="hidden sm:inline">Ubah</span>
+                          </button>
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={() => setTargetArsip(m)}
@@ -268,8 +274,10 @@ export function MenuPage() {
                               <IconArchive className="size-3.5" />
                             )}
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <p className="text-right text-xs text-muted">—</p>
+                      )}
                     </td>
                   </tr>
                 ))}

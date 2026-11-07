@@ -2,11 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import { uid } from '../lib/id'
+import { langgananPeristiwaSinkron } from '../lib/peristiwa'
 
 type TipeToast = 'sukses' | 'error' | 'info'
 
@@ -51,6 +53,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     },
     [buang],
   )
+
+  // Tampilkan penolakan server (mis. stok habis di perangkat lain).
+  useEffect(() => {
+    return langgananPeristiwaSinkron((peristiwa) => {
+      if (peristiwa.tipe === 'penolakan') {
+        tambah('error', peristiwa.pesan)
+      }
+    })
+  }, [tambah])
 
   const nilai = useMemo<ToastContextValue>(
     () => ({

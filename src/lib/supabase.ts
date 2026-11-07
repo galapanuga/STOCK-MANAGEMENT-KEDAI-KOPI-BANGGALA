@@ -27,15 +27,42 @@ const isKeyValid =
 
 export const apakahSupabaseAktif = Boolean(isUrlValid && isKeyValid)
 
+/** URL project Supabase (tanpa garis miring di akhir). */
+export const urlSupabase = isUrlValid
+  ? (rawUrl as string).replace(/\/+$/, '')
+  : null
+
+/** Email sintetis untuk login staf: username@banggala.local */
+export const DOMAIN_EMAIL = 'banggala.local'
+
+export function emailDariUsername(username: string): string {
+  return `${username.trim().toLowerCase()}@${DOMAIN_EMAIL}`
+}
+
+export function usernameDariEmail(email: string | null | undefined): string {
+  if (!email) return ''
+  const [nama] = email.split('@')
+  return nama ?? ''
+}
+
 export const supabase: SupabaseClient | null = apakahSupabaseAktif
   ? createClient(rawUrl as string, rawAnonKey as string, {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
+        // Sesi disimpan agar aplikasi bisa dibuka kembali saat offline.
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storageKey: 'banggala_auth_session',
+        flowType: 'pkce',
       },
       realtime: {
         params: {
           eventsPerSecond: 10,
+        },
+      },
+      global: {
+        headers: {
+          'x-application-name': 'banggala-stock',
         },
       },
     })
@@ -43,40 +70,29 @@ export const supabase: SupabaseClient | null = apakahSupabaseAktif
 
 if (!apakahSupabaseAktif) {
   console.info(
-    '[Banggala Stock] Supabase belum dikonfigurasi. Berjalan dalam mode offline-lokal (localStorage).',
+    '[Banggala Stock] Supabase belum dikonfigurasi. Berjalan dalam mode lokal (localStorage + PBKDF2).',
   )
 }
 
 /**
- * Memeriksa apakah perangkat saat ini online dan dapat menjangkau server Supabase.
+ * Memeriksa apakah perangkat online dan server Supabase dapat dijangkau.
+ * Memakai endpoint health agar tidak bergantung pada RLS.
  */
 export async function periksaKoneksiOnline(): Promise<boolean> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return false
   }
-
-  if (!supabase) {
-    // Mode demo lokal tanpa Supabase
-    return false
-  }
+  if (!urlSupabase) return false
 
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 4000)
-
-    // Ping ringan ke endpoint Supabase
-    const { error } = await supabase
-      .from('pengaturan')
-      .select('id')
-      .limit(1)
-      .abortSignal(controller.signal)
-
+    const res = await fetch(`${urlSupabase}/auth/v1/health`, {
+      signal: controller.signal,
+      headers: rawAnonKey ? { apikey: rawAnonKey } : undefined,
+    })
     clearTimeout(timer)
-    if (error && error.code !== 'PGRST116') {
-      // Jika error berupa koneksi/network
-      return false
-    }
-    return true
+    return res.ok
   } catch {
     return false
   }

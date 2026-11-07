@@ -125,26 +125,43 @@ export function normalisasiDB(db: Partial<DB>): DB {
   }
 
   const semuaBahan = [...bahanLama, ...bahanTambahan] as Bahan[]
-  const semuaMenu = [...menuLama, ...menuTambahan] as Menu[]
+  const semuaMenu = [...menuLama, ...menuTambahan].map((item) => {
+    const { harga: _hargaLama, ...menu } = item as Menu & { harga?: unknown }
+    return menu as Menu
+  })
 
   // Lengkapi snapshot transaksi lama yang belum memiliki nama menu.
   const petaMenu = new Map(semuaMenu.map((m) => [m.id, m]))
-  const penjualanLengkap = (penjualan as unknown as DB['penjualan']).map((p) => ({
-    ...p,
-    items: (p.items ?? []).map((it) => ({
-      ...it,
-      nama:
-        typeof it.nama === 'string' && it.nama.trim()
-          ? it.nama
-          : (petaMenu.get(it.menuId)?.nama ?? it.menuId),
-    })),
-  }))
+  const penjualanLengkap = (penjualan as unknown as DB['penjualan']).map((p) => {
+    const { omzet: _omzetLama, hpp: _hppLama, laba: _labaLama, ...tanpaNilaiUang } =
+      p as typeof p & { omzet?: unknown; hpp?: unknown; laba?: unknown }
+    return {
+      ...tanpaNilaiUang,
+      items: (p.items ?? []).map((it) => {
+        const { harga: _hargaLama, hppSatuan: _hppLama, ...item } =
+          it as typeof it & { harga?: unknown; hppSatuan?: unknown }
+        return {
+          ...item,
+          nama:
+            typeof it.nama === 'string' && it.nama.trim()
+              ? it.nama
+              : (petaMenu.get(it.menuId)?.nama ?? it.menuId),
+        }
+      }),
+    }
+  })
+
+  const mutasiBersih = mutasi.map((item) => {
+    const { hargaSatuan: _hargaLama, ...data } =
+      item as Mutasi & { hargaSatuan?: unknown }
+    return data as Mutasi
+  })
 
   return {
     version: DB_VERSION,
     users: users as unknown as DB['users'],
     bahan: semuaBahan,
-    mutasi: [...(mutasi as unknown as DB['mutasi']), ...mutasiTambahan],
+    mutasi: [...mutasiBersih, ...mutasiTambahan],
     menu: semuaMenu,
     penjualan: penjualanLengkap,
     pengaturan: normalisasiPengaturan(db.pengaturan ?? {}),
