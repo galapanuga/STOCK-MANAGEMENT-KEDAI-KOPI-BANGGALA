@@ -190,6 +190,8 @@ export function PengaturanPage() {
   const terapkanBackup = async () => {
     if (!calonBackup) return
     try {
+      // Simpan dulu kondisi sekarang: restore tidak bisa dibatalkan.
+      buatBackup()
       await pulihkanBackup(calonBackup)
       toast.sukses('Data berhasil dipulihkan dari backup.')
     } catch (error) {

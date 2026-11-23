@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { IconX } from '../Icons'
 
@@ -27,19 +27,55 @@ export function Modal({
   lebar = 'md',
   footer,
 }: ModalProps) {
+  const panel = useRef<HTMLDivElement>(null)
+  const tutupRef = useRef(tutup)
+  tutupRef.current = tutup
+
   useEffect(() => {
     if (!buka) return
+    const sebelumnya = document.activeElement as HTMLElement | null
+    const el = panel.current
+    const daftarFokus = () =>
+      Array.from(
+        el?.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((n) => n.offsetParent !== null)
+
+    const fokusAwal = daftarFokus()[0] ?? el
+    fokusAwal?.focus()
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') tutup()
+      if (e.key === 'Escape') {
+        tutupRef.current()
+        return
+      }
+      if (e.key !== 'Tab' || !el) return
+      const daftar = daftarFokus()
+      if (daftar.length === 0) {
+        e.preventDefault()
+        return
+      }
+      const awal = daftar[0]
+      const akhir = daftar[daftar.length - 1]
+      if (e.shiftKey && document.activeElement === awal) {
+        e.preventDefault()
+        akhir.focus()
+      } else if (!e.shiftKey && document.activeElement === akhir) {
+        e.preventDefault()
+        awal.focus()
+      }
     }
+
     document.addEventListener('keydown', onKey)
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = overflow
+      sebelumnya?.focus?.()
     }
-  }, [buka, tutup])
+  }, [buka])
 
   if (!buka) return null
 
@@ -50,10 +86,12 @@ export function Modal({
         onClick={tutup}
       />
       <div
+        ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={judul}
-        className={`animate-rise relative m-0 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl border border-line bg-white shadow-2xl sm:m-4 sm:rounded-2xl ${LEBAR[lebar]}`}
+        tabIndex={-1}
+        className={`animate-rise relative m-0 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl border border-line bg-white shadow-2xl outline-none sm:m-4 sm:rounded-2xl ${LEBAR[lebar]}`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
           <div>

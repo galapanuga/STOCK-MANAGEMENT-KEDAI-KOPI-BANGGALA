@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "rolldown qa-sementara.ts --format esm --platform node --transform.define import.meta.env:{} -o qa-sementara.mjs && node qa-sementara.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

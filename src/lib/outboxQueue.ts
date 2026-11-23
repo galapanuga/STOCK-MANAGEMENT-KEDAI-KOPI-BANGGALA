@@ -105,8 +105,11 @@ export interface StatusAntrean {
   total: number
 }
 
-async function bacaStatusAntrean(): Promise<StatusAntrean> {
-  const semua = await ambilSemuaAntrean()
+async function bacaStatusAntrean(ketat = false): Promise<StatusAntrean> {
+  const semua = await ambilSemuaAntrean().catch((error) => {
+    if (ketat) throw error
+    return []
+  })
   const konflik = semua.filter((i) => i.status === 'konflik').length
   return {
     total: semua.length,
@@ -137,32 +140,15 @@ export function langgananStatusAntrean(cb: OutboxListener): () => void {
 // OPERASI INDEXEDDB
 // ==============================================================================
 
-export async function hitungAntrean(): Promise<number> {
-  try {
-    const status = await bacaStatusAntrean()
-    return status.tertunda
-  } catch {
-    return 0
-  }
-}
-
 export async function ambilSemuaAntrean(): Promise<OutboxItem[]> {
-  try {
-    const db = await bukaDB()
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly')
-      const store = tx.objectStore(STORE_NAME)
-      const req = store.getAll()
-      req.onsuccess = () => {
-        const hasil = (req.result as OutboxItem[]) || []
-        hasil.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-        resolve(hasil)
-      }
-      req.onerror = () => reject(req.error)
-    })
-  } catch {
-    return []
-  }
+  const db = await bukaDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly')
+    const req = tx.objectStore(STORE_NAME).getAll()
+    tx.oncomplete = () =>
+      resolve((req.result as OutboxItem[]).sort((a, b) => a.createdAt.localeCompare(b.createdAt)))
+    tx.onabort = () => reject(tx.error ?? new Error('Gagal membaca antrean sinkronisasi.'))
+  })
 }
 
 export async function antrekanAksi(
@@ -220,8 +206,11 @@ export async function hapusAntrean(id: string): Promise<void> {
  * (reset, restore, migrasi) yang menimpa seluruh data cloud.
  */
 export async function pastikanAntreanKosong(): Promise<void> {
-  await prosesAntreanOutbox()
-  const semua = await ambilSemuaAntrean()
+  const semua = await prosesAntreanOutbox()
+    .then(() => ambilSemuaAntrean())
+    .catch(() => {
+      throw new Error('Antrean sinkronisasi tidak dapat diperiksa. Data tidak diganti.')
+    })
   if (semua.length === 0) return
 
   const konflik = semua.filter((item) => item.status === 'konflik').length
@@ -291,23 +280,21 @@ function apakahGalatValidasi(error: unknown): error is GalatRpc {
   )
 }
 
-export async function prosesAntreanOutbox(): Promise<{
+let prosesBerjalan: ReturnType<typeof kirimAntrean> | null = null
+
+export function prosesAntreanOutbox() {
+  return (prosesBerjalan ??= kirimAntrean().finally(() => {
+    prosesBerjalan = null
+  }))
+}
+
+async function kirimAntrean(): Promise<{
   berhasil: number
   tertunda: number
   konflik: number
 }> {
-  if (sedangMemproses) {
-    const status = await bacaStatusAntrean()
-    return { berhasil: 0, tertunda: status.tertunda, konflik: status.konflik }
-  }
-
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    const status = await bacaStatusAntrean()
-    return { berhasil: 0, tertunda: status.tertunda, konflik: status.konflik }
-  }
-
-  if (!apakahSupabaseAktif) {
-    const status = await bacaStatusAntrean()
+  if (!apakahSupabaseAktif || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    const status = await bacaStatusAntrean(true)
     return { berhasil: 0, tertunda: status.tertunda, konflik: status.konflik }
   }
 
@@ -370,7 +357,7 @@ export async function prosesAntreanOutbox(): Promise<{
     siarkanPeristiwa({ tipe: 'antrean-berubah' })
   }
 
-  const status = await bacaStatusAntrean()
+  const status = await bacaStatusAntrean(true)
   return { berhasil, tertunda: status.tertunda, konflik: status.konflik }
 }
 
@@ -497,13 +484,6 @@ async function kirimItemKeCloud(item: OutboxItem): Promise<void> {
     default:
       console.warn('Aksi outbox tidak dikenal:', item.aksi)
   }
-}
-
-// Proses otomatis saat koneksi pulih.
-if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    prosesAntreanOutbox().catch(console.error)
-  })
 }
 
 /** Tipe payload penjualan untuk membantu type-safety di DataContext. */

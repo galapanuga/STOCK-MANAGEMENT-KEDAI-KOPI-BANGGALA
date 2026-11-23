@@ -187,24 +187,7 @@ export function simpanDB(db: DB): void {
   } catch (error) {
     console.error('Gagal menyimpan data', error)
     throw new Error(
-      'Penyimpanan browser penuh. Unduh backup lalu hapus data lama.',
+      'Cache offline gagal disimpan. Jangan hapus data browser; unduh backup dan hubungi admin.',
     )
-  }
-}
-
-export function hapusDB(): void {
-  localStorage.removeItem(KUNCI_DB)
-}
-
-export function buatDBKosong(): DB {
-  return {
-    version: DB_VERSION,
-    users: [],
-    bahan: [],
-    mutasi: [],
-    menu: [],
-    penjualan: [],
-    pengaturan: PENGATURAN_DEFAULT,
-    log: [],
   }
 }

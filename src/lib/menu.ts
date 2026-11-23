@@ -11,10 +11,6 @@ export interface RincianKebutuhan {
   cukup: boolean
 }
 
-export function menuPunyaResep(menu: Menu | undefined): boolean {
-  return Boolean(menu && menu.resep.length > 0)
-}
-
 /** Gabungkan kebutuhan seluruh item penjualan menjadi kebutuhan per bahan. */
 export function kebutuhanBahan(
   items: { menuId: string; jumlah: number }[],
@@ -109,8 +105,4 @@ export function menuTanpaResep(
 
 export function totalItem(items: ItemPenjualan[]): number {
   return bulatkan(items.reduce((total, it) => total + it.jumlah, 0))
-}
-
-export function ringkasItems(items: ItemPenjualan[]): string {
-  return items.map((it) => `${it.jumlah}× ${it.nama}`).join(', ')
 }

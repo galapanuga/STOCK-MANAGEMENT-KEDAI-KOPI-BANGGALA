@@ -1,6 +1,6 @@
 import type { DB } from '../types'
 import { muatDBSupabase } from './cloudDb'
-import { ambilSemuaAntrean, prosesAntreanOutbox } from './outboxQueue'
+import { prosesAntreanOutbox } from './outboxQueue'
 import { apakahSupabaseAktif } from './supabase'
 
 /**
@@ -13,24 +13,10 @@ export async function sinkronkanAwal(): Promise<DB | null> {
   if (!apakahSupabaseAktif) return null
   if (typeof navigator !== 'undefined' && !navigator.onLine) return null
 
-  try {
-    const hasil = await prosesAntreanOutbox()
-    // Jangan timpa data optimistis di perangkat dengan snapshot cloud selama
-    // masih ada perubahan yang belum terkirim.
-    if (hasil.tertunda > 0) return null
-  } catch (error) {
-    console.warn('[Sinkron] Gagal memproses antrean saat startup:', error)
-    return null
-  }
+  const hasil = await prosesAntreanOutbox()
+  // Jangan timpa data optimistis di perangkat dengan snapshot cloud selama
+  // masih ada perubahan yang belum terkirim.
+  if (hasil.tertunda > 0) return null
 
-  return muatDBSupabase()
-}
-
-/** Tarik ulang snapshot cloud tanpa menyentuh antrean. */
-export async function tarikSnapshotCloud(): Promise<DB | null> {
-  if (!apakahSupabaseAktif) return null
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return null
-  const semua = await ambilSemuaAntrean()
-  if (semua.some((item) => item.status !== 'konflik')) return null
   return muatDBSupabase()
 }

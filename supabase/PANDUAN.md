@@ -72,7 +72,7 @@ Panduan ini menjelaskan cara menyiapkan **mode online multi-perangkat** dengan
    - RLS dan grant yang ketat;
    - RPC: `catat_penjualan`, `ubah_penjualan`, `hapus_penjualan`,
      `catat_mutasi`, `ubah_mutasi`, `hapus_mutasi`, `ganti_semua_data`,
-     `reset_operasional`;
+     `catat_ganti_password`;
    - trigger profil otomatis dari `auth.users`;
    - publikasi Realtime.
 
@@ -359,6 +359,9 @@ where schemaname = 'public' and tablename in ('penjualan', 'mutasi');
 
 - **Backup JSON** tetap disarankan rutin: **Pengaturan → Data & Backup**.
   Backup online tidak berisi password (akun dikelola Supabase Auth).
+- Penggantian data cloud (migrasi, pemulihan, dan reset) memakai satu transaksi.
+  Aplikasi menolak payload RPC di atas **4 MiB** tanpa mengubah data cloud.
+  Backup yang lebih besar perlu dipulihkan oleh admin database.
 - **Reset data operasional** mengembalikan bahan/menu/penjualan/mutasi ke contoh
   awal dan **menimpa cloud**. Hanya admin, dan membutuhkan internet.
 - **Ganti password sendiri**: **Pengaturan → Keamanan Akun**. Di mode online,
@@ -396,7 +399,7 @@ select proname from pg_proc
 where pronamespace = 'public'::regnamespace
   and proname in ('catat_penjualan','ubah_penjualan','hapus_penjualan',
                   'catat_mutasi','ubah_mutasi','hapus_mutasi',
-                  'ganti_semua_data','reset_operasional');
+                  'ganti_semua_data','catat_ganti_password');
 
 -- 3. Publikasi realtime
 select schemaname, tablename

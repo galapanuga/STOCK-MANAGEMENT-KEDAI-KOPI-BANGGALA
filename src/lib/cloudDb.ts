@@ -309,6 +309,34 @@ export function mapLogToRow(l: LogAktivitas): LogAktivitasRow {
 // BACA SNAPSHOT CLOUD
 // ==============================================================================
 
+const UKURAN_HALAMAN = 1000
+
+/**
+ * Ambil semua baris dengan paginasi. PostgREST memotong respons di 1000 baris,
+ * sedangkan stok dihitung dari SELURUH mutasi — tanpa ini riwayat lama hilang
+ * diam-diam dan stok di layar jadi salah.
+ */
+async function ambilSemuaBaris<T>(tabel: 'mutasi' | 'penjualan'): Promise<T[]> {
+  const hasil: T[] = []
+  // Maju sebanyak baris yang benar-benar diterima: batas baris proyek bisa
+  // lebih kecil dari UKURAN_HALAMAN, dan melompat 1000 akan melewatkan data.
+  for (let dari = 0; ; ) {
+    const { data, error } = await supabase!
+      .from(tabel)
+      .select('*')
+      .order('tanggal', { ascending: false })
+      .order('id', { ascending: true })
+      .range(dari, dari + UKURAN_HALAMAN - 1)
+    if (error) {
+      throw new Error(`Gagal memuat ${tabel} cloud: ${error.message}`)
+    }
+    const baris = (data ?? []) as T[]
+    if (baris.length === 0) return hasil
+    hasil.push(...baris)
+    dari += baris.length
+  }
+}
+
 /**
  * Mengambil seluruh database dari Supabase.
  * `users` diisi dari tabel profiles (bukan lagi hash password).
@@ -317,19 +345,26 @@ export function mapLogToRow(l: LogAktivitas): LogAktivitasRow {
 export async function muatDBSupabase(): Promise<DB | null> {
   if (!supabase) return null
 
-  const [resPengaturan, resProfil, resBahan, resMenu, resMutasi, resPenjualan, resLog] =
-    await Promise.all([
-      supabase.from('pengaturan').select('*').limit(1).maybeSingle(),
-      supabase
-        .from('profiles')
-        .select('id, username, nama, role, aktif, created_at, updated_at, password_changed_at')
-        .order('created_at', { ascending: true }),
-      supabase.from('bahan').select('*').order('nama', { ascending: true }),
-      supabase.from('menu').select('*').order('nama', { ascending: true }),
-      supabase.from('mutasi').select('*').order('tanggal', { ascending: false }),
-      supabase.from('penjualan').select('*').order('tanggal', { ascending: false }),
-      supabase.from('log_aktivitas').select('*').order('at', { ascending: false }).limit(200),
-    ])
+  const [
+    resPengaturan,
+    resProfil,
+    resBahan,
+    resMenu,
+    resLog,
+    mutasiBaris,
+    penjualanBaris,
+  ] = await Promise.all([
+    supabase.from('pengaturan').select('*').limit(1).maybeSingle(),
+    supabase
+      .from('profiles')
+      .select('id, username, nama, role, aktif, created_at, updated_at, password_changed_at')
+      .order('created_at', { ascending: true }),
+    supabase.from('bahan').select('*').order('nama', { ascending: true }),
+    supabase.from('menu').select('*').order('nama', { ascending: true }),
+    supabase.from('log_aktivitas').select('*').order('at', { ascending: false }).limit(200),
+    ambilSemuaBaris<MutasiRow>('mutasi'),
+    ambilSemuaBaris<PenjualanRow>('penjualan'),
+  ])
 
   if (resPengaturan.error) {
     throw new Error(`Gagal memuat pengaturan cloud: ${resPengaturan.error.message}`)
@@ -342,12 +377,6 @@ export async function muatDBSupabase(): Promise<DB | null> {
   }
   if (resMenu.error) {
     throw new Error(`Gagal memuat menu cloud: ${resMenu.error.message}`)
-  }
-  if (resMutasi.error) {
-    throw new Error(`Gagal memuat mutasi cloud: ${resMutasi.error.message}`)
-  }
-  if (resPenjualan.error) {
-    throw new Error(`Gagal memuat penjualan cloud: ${resPenjualan.error.message}`)
   }
   if (resLog.error) {
     throw new Error(`Gagal memuat log cloud: ${resLog.error.message}`)
@@ -370,8 +399,8 @@ export async function muatDBSupabase(): Promise<DB | null> {
     users: ((resProfil.data ?? []) as ProfilRow[]).map(mapProfilFromRow),
     bahan: ((resBahan.data ?? []) as BahanRow[]).map(mapBahanFromRow),
     menu: ((resMenu.data ?? []) as MenuRow[]).map(mapMenuFromRow),
-    mutasi: ((resMutasi.data ?? []) as MutasiRow[]).map(mapMutasiFromRow),
-    penjualan: ((resPenjualan.data ?? []) as PenjualanRow[]).map(mapPenjualanFromRow),
+    mutasi: mutasiBaris.map(mapMutasiFromRow),
+    penjualan: penjualanBaris.map(mapPenjualanFromRow),
     log: ((resLog.data ?? []) as LogAktivitasRow[]).map(mapLogFromRow),
   }
 }
@@ -450,14 +479,19 @@ export async function gantiSemuaDataCloud(
   db: DB,
   log?: LogAktivitas,
 ): Promise<void> {
+  const payload = {
+    p_db: dbKeBarisCloud(db),
+    p_log: log ? mapLogToRow(log) : null,
+  }
+  // shortcut: batas aplikasi 4 MiB per RPC atomik; gunakan staging + commit atomik bila terlampaui.
+  if (new Blob([JSON.stringify(payload)]).size > 4 * 1024 * 1024) {
+    throw new Error('Data melebihi batas unggahan 4 MiB. Data tidak diganti; hubungi admin.')
+  }
   if (!supabase) {
     throw new Error('Supabase belum dikonfigurasi.')
   }
 
-  const { error } = await supabase.rpc('ganti_semua_data', {
-    p_db: dbKeBarisCloud(db),
-    p_log: log ? mapLogToRow(log) : null,
-  })
+  const { error } = await supabase.rpc('ganti_semua_data', payload)
 
   if (error) {
     throw new Error(error.message || 'Gagal mengganti data cloud.')
@@ -479,6 +513,21 @@ export async function migrasiSemuaKeCloud(
   }
 
   try {
+    // Migrasi hanya untuk cloud kosong: menimpa cloud yang sudah berisi data
+    // bisa menghapus riwayat. Untuk menimpa, pakai Pulihkan backup.
+    const cloud = await muatDBSupabase()
+    const adaData =
+      cloud &&
+      [cloud.bahan, cloud.menu, cloud.mutasi, cloud.penjualan].some(
+        (daftar) => daftar.length > 0,
+      )
+    if (adaData) {
+      return {
+        sukses: false,
+        pesan:
+          'Cloud sudah berisi data. Migrasi hanya untuk cloud kosong; gunakan Pulihkan backup bila ingin menimpa.',
+      }
+    }
     onProgress?.('Memeriksa sesi admin…', 10)
     onProgress?.('Mengirim katalog bahan & menu…', 35)
     onProgress?.('Mengirim riwayat penjualan & mutasi…', 65)

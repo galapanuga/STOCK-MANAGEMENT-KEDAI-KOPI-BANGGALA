@@ -1,25 +1,13 @@
-const nf = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
-const nfBulat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 })
+const pemformat = new Map<number, Intl.NumberFormat>()
 
 export function formatAngka(nilai: number, maksDesimal = 2): string {
   if (!Number.isFinite(nilai)) return '0'
-  return new Intl.NumberFormat('id-ID', {
-    maximumFractionDigits: maksDesimal,
-  }).format(nilai)
-}
-
-export function formatRupiah(nilai: number): string {
-  const n = Number.isFinite(nilai) ? Math.round(nilai) : 0
-  const tanda = n < 0 ? '-' : ''
-  return `${tanda}Rp ${nfBulat.format(Math.abs(n))}`
-}
-
-export function formatRupiahRingkas(nilai: number): string {
-  const n = Math.abs(nilai)
-  if (n >= 1_000_000_000) return `Rp ${formatAngka(nilai / 1_000_000_000, 1)} M`
-  if (n >= 1_000_000) return `Rp ${formatAngka(nilai / 1_000_000, 1)} jt`
-  if (n >= 10_000) return `Rp ${formatAngka(nilai / 1_000, 0)} rb`
-  return formatRupiah(nilai)
+  let f = pemformat.get(maksDesimal)
+  if (!f) {
+    f = new Intl.NumberFormat('id-ID', { maximumFractionDigits: maksDesimal })
+    pemformat.set(maksDesimal, f)
+  }
+  return f.format(nilai)
 }
 
 const BULAN_PENDEK = [
@@ -69,14 +57,6 @@ export function formatTanggalWaktu(iso: string | Date): string {
   const d = typeof iso === 'string' ? new Date(iso) : iso
   if (Number.isNaN(d.getTime())) return '-'
   return `${formatTanggal(d)} · ${formatWaktu(d)}`
-}
-
-export function formatBulanTahun(d: Date): string {
-  return `${BULAN_PENDEK[d.getMonth()]} ${d.getFullYear()}`
-}
-
-export function namaHari(d: Date): string {
-  return HARI[d.getDay()]
 }
 
 function pad(n: number): string {

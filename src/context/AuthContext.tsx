@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -33,7 +34,7 @@ import {
   type PenjualanRow,
   type ProfilRow,
 } from '../lib/cloudDb'
-import { ambilProfilCloud } from '../lib/rpc'
+import { ambilProfilCloud, catatGantiPasswordCloud } from '../lib/rpc'
 import { langgananPeristiwaSinkron } from '../lib/peristiwa'
 import { sinkronkanAwal } from '../lib/sinkron'
 import { inisialisasiDB } from '../lib/seed'
@@ -50,6 +51,8 @@ interface AuthContextValue {
   user: User | null
   siap: boolean
   modeOnline: boolean
+  galatCache: string | null
+  sinkronUlang: () => Promise<void>
   login: (username: string, password: string) => Promise<void>
   logout: () => void
   gantiPassword: (userId: string, passwordBaru: string) => Promise<void>
@@ -109,6 +112,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apakahSupabaseAktif ? bacaCacheProfil() : null,
   )
   const [galatInit, setGalatInit] = useState<string | null>(null)
+  const [galatCache, setGalatCache] = useState<string | null>(null)
+  const sinkronBerjalan = useRef<Promise<void> | null>(null)
+  const sinkronUlang = useCallback(() => {
+    if (sinkronBerjalan.current) return sinkronBerjalan.current
+    const proses = sinkronkanAwal()
+      .then((data) => {
+        if (data && sinkronBerjalan.current === proses) setDb(data)
+      })
+      .finally(() => {
+        if (sinkronBerjalan.current === proses) sinkronBerjalan.current = null
+      })
+    sinkronBerjalan.current = proses
+    return proses
+  }, [])
 
   // ----------------------------------------------------------------------------
   // 1. Startup: cache lokal dulu, lalu sesi & snapshot cloud
@@ -177,12 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           typeof navigator !== 'undefined' &&
           navigator.onLine
         ) {
-          sinkronkanAwal()
-            .then((dataCloud) => {
-              if (!aktif || !dataCloud) return
-              setDb(dataCloud)
-              simpanDB(dataCloud)
-            })
+          sinkronUlang()
             .catch((error) => {
               console.warn('[Banggala Stock] Sinkronisasi awal gagal:', error)
             })
@@ -198,20 +210,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       aktif = false
+      sinkronBerjalan.current = null
     }
-  }, [])
+  }, [sinkronUlang])
 
   // ----------------------------------------------------------------------------
   // 2. Persist snapshot ke localStorage (cache offline)
   // ----------------------------------------------------------------------------
-  useEffect(() => {
-    if (!db) return
+  const dbTerakhir = useRef<DB | null>(null)
+  dbTerakhir.current = db
+  const simpanCache = useCallback((data: DB) => {
     try {
-      simpanDB(db)
+      simpanDB(data)
+      setGalatCache(null)
     } catch (error) {
-      console.error('[Banggala Stock] Gagal menyimpan ke localStorage:', error)
+      setGalatCache(error instanceof Error ? error.message : 'Cache offline gagal disimpan.')
     }
-  }, [db])
+  }, [])
+
+  // Tulis cache sesekali, bukan tiap perubahan: JSON.stringify seluruh DB mahal
+  // dan memblokir UI. shortcut: localStorage ~5 MB; pindah ke IndexedDB bila
+  // riwayat melewati ±20k mutasi.
+  useEffect(() => {
+    if (!db) return undefined
+    const id = setTimeout(() => simpanCache(db), 1000)
+    return () => clearTimeout(id)
+  }, [db, simpanCache])
+
+  // Pastikan perubahan terakhir tetap tersimpan saat tab ditutup.
+  useEffect(() => {
+    const simpan = () => {
+      if (dbTerakhir.current) simpanCache(dbTerakhir.current)
+    }
+    window.addEventListener('pagehide', simpan)
+    return () => window.removeEventListener('pagehide', simpan)
+  }, [simpanCache])
 
   // ----------------------------------------------------------------------------
   // 3. Realtime Supabase
@@ -388,6 +421,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
+        sinkronBerjalan.current = null
         setProfil(null)
         simpanCacheProfil(null)
         return
@@ -415,21 +449,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // ----------------------------------------------------------------------------
-  // 5. Proses outbox berkala + reaksi terhadap konflik
+  // 5. Sinkron ulang saat koneksi pulih atau tab kembali terlihat
   // ----------------------------------------------------------------------------
+  // Realtime sudah menangani perubahan saat online; tarik penuh hanya saat
+  // perangkat baru kembali online / tab dibuka lagi, bukan tiap 20 detik.
   useEffect(() => {
     if (!apakahSupabaseAktif || !profil?.id) return undefined
-    const interval = setInterval(() => {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        sinkronkanAwal()
-          .then((dataCloud) => {
-            if (dataCloud) setDb(dataCloud)
-          })
-          .catch(() => undefined)
-      }
-    }, 20000)
-    return () => clearInterval(interval)
-  }, [profil?.id])
+    const muatUlang = () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      sinkronUlang().catch((error) => console.warn('[Banggala Stock] Sinkron ulang gagal:', error))
+    }
+    const saatTerlihat = () => {
+      if (document.visibilityState === 'visible') muatUlang()
+    }
+    window.addEventListener('online', muatUlang)
+    document.addEventListener('visibilitychange', saatTerlihat)
+    return () => {
+      window.removeEventListener('online', muatUlang)
+      document.removeEventListener('visibilitychange', saatTerlihat)
+    }
+  }, [profil?.id, sinkronUlang])
 
   useEffect(() => {
     if (!profil?.id) return undefined
@@ -437,15 +476,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (peristiwa.tipe !== 'perlu-sinkron-ulang') return
       if (!apakahSupabaseAktif) return
       if (typeof navigator !== 'undefined' && !navigator.onLine) return
-      sinkronkanAwal()
-        .then((dataCloud) => {
-          if (dataCloud) setDb(dataCloud)
-        })
+      sinkronUlang()
         .catch((error) => {
           console.warn('[Banggala Stock] Sinkron ulang gagal:', error)
         })
     })
-  }, [profil?.id])
+  }, [profil?.id, sinkronUlang])
 
   // ----------------------------------------------------------------------------
   // 6. Aksi autentikasi
@@ -497,11 +533,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         simpanCacheProfil(profilCloud)
         setDb((prev) => (prev ? gabungProfilKeDb(prev, profilCloud) : prev))
 
-        sinkronkanAwal()
-          .then((dataCloud) => {
-            if (dataCloud) setDb(dataCloud)
-          })
-          .catch(console.error)
+        sinkronUlang().catch(console.error)
         return
       }
 
@@ -519,11 +551,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       simpanSesi(akun.id)
       setUserId(akun.id)
     },
-    [db],
+    [db, sinkronUlang],
   )
 
   const logout = useCallback(() => {
     if (apakahSupabaseAktif) {
+      sinkronBerjalan.current = null
       supabase?.auth.signOut().catch(console.error)
       setProfil(null)
       simpanCacheProfil(null)
@@ -549,6 +582,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase!.auth.updateUser({ password: passwordBaru })
         if (error) throw new Error(error.message || 'Gagal mengganti password.')
         const sekarang = new Date().toISOString()
+        catatGantiPasswordCloud().catch((error) =>
+          console.warn('[Banggala Stock] Gagal mencatat tanggal ganti password:', error),
+        )
         setProfil((prev) => (prev ? { ...prev, passwordChangedAt: sekarang } : prev))
         simpanCacheProfil({ ...profil, passwordChangedAt: sekarang })
         setDb((prev) =>
@@ -601,11 +637,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       siap,
       modeOnline: apakahSupabaseAktif,
+      galatCache,
+      sinkronUlang,
       login,
       logout,
       gantiPassword,
     }),
-    [db, user, siap, login, logout, gantiPassword],
+    [db, user, siap, galatCache, sinkronUlang, login, logout, gantiPassword],
   )
 
   if (!siap) {

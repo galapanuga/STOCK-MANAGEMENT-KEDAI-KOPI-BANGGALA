@@ -78,7 +78,6 @@ create table if not exists menu (
   id text primary key,
   nama text not null,
   kategori text not null,
-  harga numeric,
   deskripsi text,
   resep jsonb not null default '[]'::jsonb,
   resep_estimasi boolean not null default true,
@@ -95,9 +94,6 @@ create table if not exists penjualan (
   nomor text unique not null,
   tanggal timestamptz not null,
   items jsonb not null default '[]'::jsonb,
-  omzet numeric,
-  hpp numeric,
-  laba numeric,
   catatan text,
   stok_terpotong boolean not null default true,
   user_id text not null,
@@ -106,7 +102,8 @@ create table if not exists penjualan (
   updated_at timestamptz default now()
 );
 
-create index if not exists idx_penjualan_tanggal on penjualan(tanggal desc);
+create index if not exists idx_penjualan_tanggal_id on penjualan(tanggal desc, id);
+drop index if exists public.idx_penjualan_tanggal;
 
 -- ------------------------------------------------------------------------------
 -- 6. MUTASI STOK
@@ -116,7 +113,6 @@ create table if not exists mutasi (
   bahan_id text not null references bahan(id) on delete cascade,
   tipe text not null check (tipe in ('masuk', 'keluar')),
   jumlah numeric not null check (jumlah > 0),
-  harga_satuan numeric,
   alasan text,
   keterangan text,
   tanggal timestamptz not null,
@@ -129,6 +125,7 @@ create table if not exists mutasi (
 
 create index if not exists idx_mutasi_bahan on mutasi(bahan_id, tanggal desc);
 create index if not exists idx_mutasi_penjualan on mutasi(penjualan_id);
+create index if not exists idx_mutasi_tanggal_id on mutasi(tanggal desc, id);
 
 -- ------------------------------------------------------------------------------
 -- 7. LOG AKTIVITAS
@@ -224,6 +221,17 @@ begin
   end if;
   return v_profil;
 end;
+$$;
+
+-- Klien tidak boleh menulis profiles langsung. RPC ini hanya menyentuh tanggal
+-- ganti password milik pemanggil sendiri.
+create or replace function public.catat_ganti_password()
+returns void
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  update profiles set password_changed_at = now() where id = auth.uid();
 $$;
 
 -- Kebutuhan bahan dari daftar item penjualan (menuId, jumlah).
@@ -417,6 +425,9 @@ begin
     coalesce(p_log ->> 'detail', '')
   )
   on conflict (id) do nothing;
+
+  -- Log hanya untuk audit jangka pendek; jangan tumbuh selamanya.
+  delete from log_aktivitas where at < now() - interval '180 days';
 end;
 $$;
 
@@ -966,17 +977,8 @@ begin
 end;
 $$;
 
-create or replace function public.reset_operasional(
-  p_db jsonb,
-  p_log jsonb default null
-)
-returns void
-language sql
-security definer
-set search_path = public, pg_temp
-as $$
-  select public.ganti_semua_data(p_db, p_log);
-$$;
+-- Bersihkan RPC lama dari instalasi sebelumnya (sudah tidak dipakai).
+drop function if exists public.reset_operasional(jsonb, jsonb);
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY
@@ -1056,11 +1058,9 @@ create policy "log: tulis aktif"
   on log_aktivitas for insert to authenticated
   with check (public.banggala_saya_aktif() and user_id = auth.uid()::text);
 
--- counter ----------------------------------------------------------------
+-- penjualan_counter sengaja tanpa policy: hanya RPC security definer yang
+-- boleh menyentuhnya. Drop ini membersihkan policy dari instalasi lama.
 drop policy if exists "counter: admin" on penjualan_counter;
-create policy "counter: admin"
-  on penjualan_counter for select to authenticated
-  using (public.banggala_is_admin());
 
 -- ==============================================================================
 -- HAK AKSES TABEL
@@ -1073,7 +1073,7 @@ revoke all on table profiles, pengaturan, bahan, menu, mutasi, penjualan,
 revoke all on table mutasi, penjualan, penjualan_counter from authenticated;
 revoke insert, update, delete on table profiles, log_aktivitas from authenticated;
 
-grant select on table profiles, mutasi, penjualan, log_aktivitas, penjualan_counter
+grant select on table profiles, mutasi, penjualan, log_aktivitas
   to authenticated;
 grant select, insert, update, delete on table pengaturan, bahan, menu to authenticated;
 grant insert on table log_aktivitas to authenticated;
@@ -1099,6 +1099,7 @@ revoke execute on function public.banggala_nomor_penjualan(timestamptz) from pub
 revoke execute on function public.banggala_siapkan_items(jsonb) from public, anon, authenticated;
 revoke execute on function public.banggala_stok_terpotong(jsonb) from public, anon, authenticated;
 revoke execute on function public.banggala_simpan_log(jsonb, profiles) from public, anon, authenticated;
+revoke execute on function public.catat_ganti_password() from public, anon, authenticated;
 revoke execute on function public.banggala_handle_new_user() from public, anon, authenticated;
 revoke execute on function public.banggala_set_updated_at() from public, anon, authenticated;
 
@@ -1109,7 +1110,6 @@ revoke execute on function public.catat_mutasi(text, text, text, numeric, text, 
 revoke execute on function public.ubah_mutasi(text, text, text, numeric, text, text, timestamptz, jsonb) from public, anon;
 revoke execute on function public.hapus_mutasi(text, jsonb) from public, anon;
 revoke execute on function public.ganti_semua_data(jsonb, jsonb) from public, anon;
-revoke execute on function public.reset_operasional(jsonb, jsonb) from public, anon;
 
 grant execute on function public.catat_penjualan(text, timestamptz, jsonb, text, jsonb) to authenticated;
 grant execute on function public.ubah_penjualan(text, timestamptz, jsonb, text, jsonb) to authenticated;
@@ -1118,7 +1118,7 @@ grant execute on function public.catat_mutasi(text, text, text, numeric, text, t
 grant execute on function public.ubah_mutasi(text, text, text, numeric, text, text, timestamptz, jsonb) to authenticated;
 grant execute on function public.hapus_mutasi(text, jsonb) to authenticated;
 grant execute on function public.ganti_semua_data(jsonb, jsonb) to authenticated;
-grant execute on function public.reset_operasional(jsonb, jsonb) to authenticated;
+grant execute on function public.catat_ganti_password() to authenticated;
 
 -- ==============================================================================
 -- REALTIME

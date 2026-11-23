@@ -39,7 +39,7 @@ function inisial(nama: string): string {
 }
 
 export function Layout() {
-  const { user, logout } = useAuth()
+  const { user, logout, modeOnline, galatCache } = useAuth()
   const { db, stok } = useData()
   const toast = useToast()
   const lokasi = useLocation()
@@ -75,6 +75,10 @@ export function Layout() {
   ]
 
   const keluar = () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.error('Tidak bisa keluar saat offline. Sambungkan internet dulu.')
+      return
+    }
     logout()
     toast.info('Anda telah keluar. Sampai jumpa!')
   }
@@ -231,6 +235,16 @@ export function Layout() {
           </div>
         </header>
 
+        {import.meta.env.PROD && !modeOnline && (
+          <p role="alert" className="no-print border-b border-danger/30 bg-danger-soft px-4 py-2 text-sm font-semibold text-danger">
+            Cloud tidak aktif. Data hanya tersimpan di browser ini.
+          </p>
+        )}
+        {galatCache && (
+          <p role="alert" className="no-print border-b border-danger/30 bg-danger-soft px-4 py-2 text-sm font-semibold text-danger">
+            {galatCache}
+          </p>
+        )}
         <main className="app-main mx-auto w-full max-w-7xl flex-1 px-4 py-6 lg:px-8 lg:py-8">
           <Outlet />
         </main>

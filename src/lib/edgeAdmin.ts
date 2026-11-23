@@ -78,12 +78,6 @@ async function panggil(body: AksiAdmin): Promise<ResponsEdge> {
   return hasil ?? {}
 }
 
-export async function daftarPenggunaCloud(): Promise<User[]> {
-  const hasil = await panggil({ action: 'list' })
-  const baris = Array.isArray(hasil.data) ? hasil.data : []
-  return baris.map(mapProfilFromRow)
-}
-
 export async function buatPenggunaCloud(input: {
   username: string
   nama: string

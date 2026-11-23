@@ -1,5 +1,5 @@
 /**
- * QA sementara (tidak ikut build): bundle dengan esbuild lalu jalankan via node.
+ * QA sementara (tidak ikut build): jalankan dengan `npm test`.
  * Menguji seed, stok non-negatif, validasi resep, migrasi v1→v2, dan status WIB.
  */
 import type { Bahan, DB, Menu, Mutasi, User } from './src/types'
@@ -22,6 +22,8 @@ import { hitungStok, penjualanHarian, ringkasanPeriode } from './src/lib/stock'
 import { normalisasiDB } from './src/lib/storage'
 import { statusBukaSekarang } from './src/lib/operasional'
 import { buatDatabaseAwal } from './src/lib/seed'
+import { gantiSemuaDataCloud } from './src/lib/cloudDb'
+import { pastikanAntreanKosong, prosesAntreanOutbox } from './src/lib/outboxQueue'
 
 let jumlahCek = 0
 const gagal: string[] = []
@@ -428,6 +430,18 @@ async function main(): Promise<void> {
   ujiValidasi(db)
   ujiMigrasi()
   ujiStatusWib()
+
+  const proses = prosesAntreanOutbox()
+  cek(proses === prosesAntreanOutbox(), 'Pemicu bersamaan menunggu proses antrean yang sama')
+  const guard = await pastikanAntreanKosong().catch((error) => error)
+  cek(guard instanceof Error && guard.message.includes('Data tidak diganti'), 'Penggantian data diblokir jika antrean tidak dapat dibaca')
+
+  const backupBesar = {
+    ...db,
+    log: [{ ...db.log[0], detail: 'é'.repeat(2 * 1024 * 1024) }],
+  }
+  const hasil = await gantiSemuaDataCloud(backupBesar).catch((error) => error)
+  cek(hasil instanceof Error && hasil.message.includes('4 MiB'), 'Batas backup dihitung dalam byte UTF-8 sebelum RPC')
 
   if (gagal.length > 0) {
     console.error(`\n✗ ${gagal.length} dari ${jumlahCek} cek GAGAL:`)

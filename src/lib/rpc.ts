@@ -246,5 +246,12 @@ export async function ambilProfilSendiri() {
   return ambilProfilCloud(userData.user.id)
 }
 
+/** Catat tanggal ganti password sendiri (kolom hanya bisa ditulis lewat RPC). */
+export async function catatGantiPasswordCloud(): Promise<void> {
+  const klien = pastikanKlien()
+  const { error } = await klien.rpc('catat_ganti_password')
+  if (error) throw galatDari(error)
+}
+
 /** Validasi item penjualan untuk dipakai sebagai tipe payload outbox. */
 export type ItemPenjualanSederhana = Pick<ItemPenjualan, 'menuId' | 'jumlah'>

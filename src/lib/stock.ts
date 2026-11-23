@@ -94,17 +94,6 @@ export function ringkasanPeriode(
   })
 }
 
-/** Jumlah aktivitas mutasi per hari selama `jumlahHari` terakhir. */
-export function aktivitasHarian(
-  mutasi: Mutasi[],
-  jumlahHari = 7,
-): { label: string; tanggal: Date; total: number }[] {
-  return hitungHarian(
-    mutasi.map((m) => m.tanggal),
-    jumlahHari,
-  )
-}
-
 /** Jumlah item terjual per hari selama `jumlahHari` terakhir. */
 export function penjualanHarian(
   penjualan: Penjualan[],

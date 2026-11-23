@@ -4,12 +4,15 @@ import {
   ambilSemuaAntrean,
   cobaUlangKonflik,
   langgananStatusAntrean,
-  prosesAntreanOutbox,
   type OutboxItem,
 } from '../lib/outboxQueue'
 import { apakahSupabaseAktif, periksaKoneksiOnline } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 
 export function StatusKoneksi() {
+  const { sinkronUlang } = useAuth()
+  const toast = useToast()
   const [online, setOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   )
@@ -46,7 +49,6 @@ export function StatusKoneksi() {
       setOnline(true)
       if (apakahSupabaseAktif) {
         periksaKoneksiOnline().then(setCloudTerhubung)
-        prosesAntreanOutbox().catch(console.error)
       }
     }
 
@@ -82,22 +84,32 @@ export function StatusKoneksi() {
       if (apakahSupabaseAktif) {
         const statusOnline = await periksaKoneksiOnline()
         setCloudTerhubung(statusOnline)
-        if (statusOnline) await prosesAntreanOutbox()
+        if (statusOnline) await sinkronUlang()
         await muatKonflik()
       }
+    } catch {
+      toast.error('Sinkronisasi gagal. Data cloud belum diperbarui di perangkat ini.')
     } finally {
       setMemeriksa(false)
     }
   }
 
   const cobaItem = async (id: string) => {
-    await cobaUlangKonflik(id)
-    await muatKonflik()
+    try {
+      await cobaUlangKonflik(id)
+      await muatKonflik()
+    } catch {
+      toast.error('Antrean tidak dapat diproses. Coba lagi.')
+    }
   }
 
   const buangItem = async (id: string) => {
-    await abaikanKonflik(id)
-    await muatKonflik()
+    try {
+      await abaikanKonflik(id)
+      await muatKonflik()
+    } catch {
+      toast.error('Antrean tidak dapat diperbarui. Coba lagi.')
+    }
   }
 
   const tombolKonflik = konflikCount > 0 && (
@@ -233,7 +245,7 @@ export function StatusKoneksi() {
         type="button"
         onClick={sinkronManual}
         className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success transition-colors hover:bg-success/20"
-        title="Terhubung ke cloud database Supabase secara real-time. Klik untuk cek koneksi."
+        title="Terhubung ke Supabase. Klik untuk menyinkronkan data."
       >
         <span className="size-2 rounded-full bg-success" />
         <span className="hidden sm:inline">Online (Tersinkron)</span>
