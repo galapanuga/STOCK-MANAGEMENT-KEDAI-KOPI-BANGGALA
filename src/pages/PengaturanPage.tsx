@@ -26,6 +26,7 @@ import { namaHariIndo, URUTAN_HARI } from '../lib/operasional'
 import { apakahSupabaseAktif } from '../lib/supabase'
 import { migrasiSemuaKeCloud } from '../lib/cloudDb'
 import { pastikanAntreanKosong } from '../lib/outboxQueue'
+import { bacaBackup } from '../lib/storage'
 
 export function PengaturanPage() {
   const { user, gantiPassword, modeOnline } = useAuth()
@@ -66,6 +67,7 @@ export function PengaturanPage() {
   const [konfirmasiReset, setKonfirmasiReset] = useState(false)
   const [memprosesReset, setMemprosesReset] = useState(false)
   const [calonBackup, setCalonBackup] = useState<DB | null>(null)
+  const [memulihkan, setMemulihkan] = useState(false)
   const inputFile = useRef<HTMLInputElement>(null)
 
   const ukuranData = useMemo(() => {
@@ -163,15 +165,7 @@ export function PengaturanPage() {
     if (!file) return
     try {
       const teks = await file.text()
-      const data = JSON.parse(teks) as DB
-      if (
-        !data ||
-        !Array.isArray(data.users) ||
-        !Array.isArray(data.bahan) ||
-        !Array.isArray(data.mutasi)
-      ) {
-        throw new Error('Struktur file tidak sesuai.')
-      }
+      const data = bacaBackup(JSON.parse(teks))
       if (!modeOnline && data.users.length === 0) {
         throw new Error('File backup tidak memiliki akun.')
       }
@@ -188,16 +182,18 @@ export function PengaturanPage() {
   }
 
   const terapkanBackup = async () => {
-    if (!calonBackup) return
+    if (!calonBackup || memulihkan) return
+    setMemulihkan(true)
     try {
       // Simpan dulu kondisi sekarang: restore tidak bisa dibatalkan.
       buatBackup()
       await pulihkanBackup(calonBackup)
       toast.sukses('Data berhasil dipulihkan dari backup.')
+      setCalonBackup(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal memulihkan data.')
     } finally {
-      setCalonBackup(null)
+      setMemulihkan(false)
     }
   }
 
@@ -748,7 +744,8 @@ export function PengaturanPage() {
         }
         labelKonfirmasi="Pulihkan data"
         bahaya
-        onTutup={() => setCalonBackup(null)}
+        sedangProses={memulihkan}
+        onTutup={() => { if (!memulihkan) setCalonBackup(null) }}
         onKonfirmasi={terapkanBackup}
       />
 

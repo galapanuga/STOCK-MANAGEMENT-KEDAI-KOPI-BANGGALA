@@ -72,6 +72,8 @@ function normalisasiPengaturan(p: Partial<Pengaturan>): Pengaturan {
  * - Memberi stok awal hanya untuk bahan baru agar resep katalog bisa dipakai.
  */
 export function normalisasiDB(db: Partial<DB>): DB {
+  if (db.version === DB_VERSION) return db as DB
+
   const ada = (x: unknown): x is Record<string, unknown> =>
     Boolean(x) && typeof x === 'object'
 
@@ -167,6 +169,59 @@ export function normalisasiDB(db: Partial<DB>): DB {
     pengaturan: normalisasiPengaturan(db.pengaturan ?? {}),
     log: log as unknown as DB['log'],
   }
+}
+
+export function bacaBackup(data: unknown): DB {
+  const backup = data as Partial<DB> | null
+  if (!backup || (backup.version !== 1 && backup.version !== DB_VERSION)) {
+    throw new Error('Versi backup tidak didukung.')
+  }
+
+  for (const bagian of ['users', 'bahan', 'mutasi', 'menu', 'penjualan', 'log'] as const) {
+    const daftar = backup[bagian]
+    if (!Array.isArray(daftar) || daftar.some((baris) => !baris || typeof baris.id !== 'string' || !baris.id)) {
+      throw new Error(`Bagian ${bagian} pada backup tidak lengkap atau tidak valid.`)
+    }
+    const ids = new Set<string>()
+    for (const baris of daftar) {
+      if (ids.has(baris.id)) throw new Error(`ID ganda di bagian ${bagian}: ${baris.id}.`)
+      ids.add(baris.id)
+    }
+  }
+
+  const bahanIds = new Set(backup.bahan?.map((b) => b.id))
+  const penjualanIds = new Set(backup.penjualan?.map((p) => p.id))
+  for (const m of backup.mutasi ?? []) {
+    if (!bahanIds.has(m.bahanId) || (m.tipe !== 'masuk' && m.tipe !== 'keluar') ||
+        !Number.isFinite(m.jumlah) || m.jumlah <= 0 ||
+        (m.penjualanId != null && !penjualanIds.has(m.penjualanId))) {
+      throw new Error(`Mutasi ${m.id} memiliki tipe, jumlah, atau rujukan yang tidak valid.`)
+    }
+  }
+
+  const p = backup.pengaturan
+  if (!p || typeof p.namaKedai !== 'string' || !p.namaKedai.trim() ||
+      backup.menu?.some((m) => !Array.isArray(m.resep) ||
+        m.resep.some((r) => !r || typeof r.bahanId !== 'string' || !Number.isFinite(r.jumlah) || r.jumlah <= 0)) ||
+      backup.penjualan?.some((sale) => !Array.isArray(sale.items) || !sale.items.length ||
+        sale.items.some((it) => !it || typeof it.menuId !== 'string' ||
+          (backup.version === DB_VERSION && typeof it.nama !== 'string') ||
+          !Number.isInteger(it.jumlah) || it.jumlah <= 0))) {
+    throw new Error('Pengaturan, resep, atau rincian penjualan pada backup tidak valid.')
+  }
+  if (backup.version === DB_VERSION) {
+    for (const k of Object.keys(PENGATURAN_DEFAULT) as (keyof Pengaturan)[]) {
+      const nilai = p[k]
+      const standar = PENGATURAN_DEFAULT[k]
+      if (typeof nilai !== typeof standar || nilai === null ||
+          (Array.isArray(standar) &&
+            (!Array.isArray(nilai) || nilai.some((item) => typeof item !== 'string')))) {
+        throw new Error('Pengaturan pada backup tidak lengkap.')
+      }
+    }
+  }
+
+  return normalisasiDB(backup)
 }
 
 export function muatDB(): DB | null {

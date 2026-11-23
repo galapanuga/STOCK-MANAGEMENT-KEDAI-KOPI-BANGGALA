@@ -322,8 +322,11 @@ mutasi, dan log aktivitas.
    - **Buang** — hapus dari antrean bila transaksi memang batal.
 4. Data lokal akan disegarkan dari server setelahnya.
 
-> Hanya admin yang sebaiknya memutuskan konflik. Jangan pernah menghapus
-> database browser secara manual sebelum outbox kosong.
+> Hanya akun pemilik entri yang bisa mengirim ulang. Hanya admin aktif yang
+> online yang bisa membuang entri konflik setelah konfirmasi. Entri lama tanpa
+> pemilik tetap terlihat di panel Konflik dan tidak dikirim otomatis.
+> Sebelum memperbarui aplikasi, kosongkan antrean tiap perangkat. Jangan ganti
+> akun atau hapus data browser sebelum antrean akun lama tersinkron.
 
 ---
 
@@ -362,6 +365,11 @@ where schemaname = 'public' and tablename in ('penjualan', 'mutasi');
 - Penggantian data cloud (migrasi, pemulihan, dan reset) memakai satu transaksi.
   Aplikasi menolak payload RPC di atas **4 MiB** tanpa mengubah data cloud.
   Backup yang lebih besar perlu dipulihkan oleh admin database.
+- Pemulihan memerlukan backup lengkap dengan versi yang didukung (v1 atau v2).
+  Daftar kosong tetap sah, tetapi bagian yang hilang ditolak. Backup v2 dipulihkan
+  tanpa menambahkan katalog atau stok contoh. Untuk proyek yang sudah berjalan,
+  uji dan terapkan definisi terbaru `ganti_semua_data` dari `schema.sql` agar
+  snapshot yang tidak lengkap juga ditolak oleh database.
 - **Reset data operasional** mengembalikan bahan/menu/penjualan/mutasi ke contoh
   awal dan **menimpa cloud**. Hanya admin, dan membutuhkan internet.
 - **Ganti password sendiri**: **Pengaturan → Keamanan Akun**. Di mode online,

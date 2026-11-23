@@ -39,6 +39,7 @@ export function BahanPage() {
   const [modalBuka, setModalBuka] = useState(false)
   const [diedit, setDiedit] = useState<Bahan | null>(null)
   const [targetArsip, setTargetArsip] = useState<Bahan | null>(null)
+  const [memprosesArsip, setMemprosesArsip] = useState(false)
 
   const daftar = useMemo(() => {
     const q = cari.trim().toLowerCase()
@@ -75,19 +76,21 @@ export function BahanPage() {
     setModalBuka(true)
   }
 
-  const konfirmasiArsip = () => {
-    if (!targetArsip) return
+  const konfirmasiArsip = async () => {
+    if (!targetArsip || memprosesArsip) return
+    setMemprosesArsip(true)
     try {
-      arsipBahan(targetArsip.id, !targetArsip.arsip)
+      await arsipBahan(targetArsip.id, !targetArsip.arsip)
       toast.sukses(
         targetArsip.arsip
           ? `Bahan "${targetArsip.nama}" diaktifkan kembali.`
           : `Bahan "${targetArsip.nama}" diarsipkan.`,
       )
+      setTargetArsip(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal mengubah bahan.')
     } finally {
-      setTargetArsip(null)
+      setMemprosesArsip(false)
     }
   }
 
@@ -271,21 +274,15 @@ export function BahanPage() {
         buka={modalBuka}
         tutup={() => setModalBuka(false)}
         bahan={diedit}
-        onSimpan={(input) => {
-          try {
-            if (diedit) {
-              ubahBahan(diedit.id, input)
-              toast.sukses(`Bahan "${input.nama}" berhasil diperbarui.`)
-            } else {
-              tambahBahan(input)
-              toast.sukses(`Bahan "${input.nama}" berhasil ditambahkan.`)
-            }
-            setModalBuka(false)
-          } catch (error) {
-            toast.error(
-              error instanceof Error ? error.message : 'Gagal menyimpan bahan.',
-            )
+        onSimpan={async (input) => {
+          if (diedit) {
+            await ubahBahan(diedit.id, input)
+            toast.sukses(`Bahan "${input.nama}" berhasil diperbarui.`)
+          } else {
+            await tambahBahan(input)
+            toast.sukses(`Bahan "${input.nama}" berhasil ditambahkan.`)
           }
+          setModalBuka(false)
         }}
       />
 
@@ -299,7 +296,8 @@ export function BahanPage() {
         }
         labelKonfirmasi={targetArsip?.arsip ? 'Aktifkan' : 'Arsipkan'}
         bahaya={!targetArsip?.arsip}
-        onTutup={() => setTargetArsip(null)}
+        sedangProses={memprosesArsip}
+        onTutup={() => { if (!memprosesArsip) setTargetArsip(null) }}
         onKonfirmasi={konfirmasiArsip}
       />
     </div>
@@ -315,7 +313,7 @@ function BahanModal({
   buka: boolean
   tutup: () => void
   bahan: Bahan | null
-  onSimpan: (input: InputBahan) => void
+  onSimpan: (input: InputBahan) => Promise<void>
 }) {
   const { db } = useData()
   const [nama, setNama] = useState('')
@@ -324,6 +322,7 @@ function BahanModal({
   const [stokMin, setStokMin] = useState('0')
   const [stokAwal, setStokAwal] = useState('')
   const [galat, setGalat] = useState('')
+  const [menyimpan, setMenyimpan] = useState(false)
 
   useEffect(() => {
     if (!buka) return
@@ -354,7 +353,8 @@ function BahanModal({
     return opsi
   }, [bahan, db.pengaturan.satuanBahan])
 
-  const kirim = () => {
+  const kirim = async () => {
+    if (menyimpan) return
     setGalat('')
     if (!nama.trim()) {
       setGalat('Nama bahan wajib diisi.')
@@ -364,19 +364,26 @@ function BahanModal({
       setGalat('Satuan wajib dipilih.')
       return
     }
-    onSimpan({
-      nama: nama.trim(),
-      kategori,
-      satuan,
-      stokMin: Math.max(0, keDesimal(stokMin)),
-      stokAwal: bahan ? 0 : Math.max(0, keDesimal(stokAwal)),
-    })
+    setMenyimpan(true)
+    try {
+      await onSimpan({
+        nama: nama.trim(),
+        kategori,
+        satuan,
+        stokMin: Math.max(0, keDesimal(stokMin)),
+        stokAwal: bahan ? 0 : Math.max(0, keDesimal(stokAwal)),
+      })
+    } catch (error) {
+      setGalat(error instanceof Error ? error.message : 'Gagal menyimpan bahan.')
+    } finally {
+      setMenyimpan(false)
+    }
   }
 
   return (
     <Modal
       buka={buka}
-      tutup={tutup}
+      tutup={() => { if (!menyimpan) tutup() }}
       judul={bahan ? 'Ubah Bahan' : 'Tambah Bahan'}
       deskripsi={
         bahan
@@ -385,18 +392,18 @@ function BahanModal({
       }
       footer={
         <>
-          <button className="btn btn-outline" onClick={tutup}>
+          <button className="btn btn-outline" onClick={tutup} disabled={menyimpan}>
             Batal
           </button>
-          <button className="btn btn-primary" onClick={kirim}>
-            {bahan ? 'Simpan perubahan' : 'Tambah bahan'}
+          <button className="btn btn-primary" onClick={kirim} disabled={menyimpan}>
+            {menyimpan ? 'Menyimpan…' : bahan ? 'Simpan perubahan' : 'Tambah bahan'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         {galat && (
-          <p className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
+          <p role="alert" className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
             {galat}
           </p>
         )}

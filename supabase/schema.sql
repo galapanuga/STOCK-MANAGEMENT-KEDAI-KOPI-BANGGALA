@@ -909,6 +909,18 @@ declare
 begin
   v_profil := public.banggala_pastikan_admin();
 
+  if jsonb_typeof(p_db) is distinct from 'object'
+     or jsonb_typeof(p_db -> 'pengaturan') is distinct from 'object'
+     or nullif(btrim(p_db -> 'pengaturan' ->> 'nama_kedai'), '') is null
+     or jsonb_typeof(p_db -> 'bahan') is distinct from 'array'
+     or jsonb_typeof(p_db -> 'menu') is distinct from 'array'
+     or jsonb_typeof(p_db -> 'penjualan') is distinct from 'array'
+     or jsonb_typeof(p_db -> 'mutasi') is distinct from 'array'
+     or jsonb_typeof(p_db -> 'log') is distinct from 'array' then
+    raise exception 'Snapshot tidak lengkap atau tidak valid. Data tidak diganti.'
+      using errcode = '22023';
+  end if;
+
   -- Cegah kasir lain menulis di tengah proses ganti data.
   lock table bahan, menu, penjualan, mutasi, log_aktivitas,
     pengaturan, penjualan_counter in exclusive mode;
@@ -921,25 +933,17 @@ begin
   delete from penjualan_counter;
   delete from log_aktivitas;
 
-  if p_db ? 'pengaturan' and p_db -> 'pengaturan' is not null then
-    insert into pengaturan
-    select * from jsonb_populate_record(null::pengaturan, p_db -> 'pengaturan');
-  end if;
+  insert into pengaturan
+  select * from jsonb_populate_record(null::pengaturan, p_db -> 'pengaturan');
 
-  if jsonb_typeof(p_db -> 'bahan') = 'array' then
-    insert into bahan
-    select * from jsonb_populate_recordset(null::bahan, p_db -> 'bahan');
-  end if;
+  insert into bahan
+  select * from jsonb_populate_recordset(null::bahan, p_db -> 'bahan');
 
-  if jsonb_typeof(p_db -> 'menu') = 'array' then
-    insert into menu
-    select * from jsonb_populate_recordset(null::menu, p_db -> 'menu');
-  end if;
+  insert into menu
+  select * from jsonb_populate_recordset(null::menu, p_db -> 'menu');
 
-  if jsonb_typeof(p_db -> 'penjualan') = 'array' then
-    insert into penjualan
-    select * from jsonb_populate_recordset(null::penjualan, p_db -> 'penjualan');
-  end if;
+  insert into penjualan
+  select * from jsonb_populate_recordset(null::penjualan, p_db -> 'penjualan');
 
   -- Bangun ulang counter nomor dari data yang baru dimasukkan. Tanpa ini,
   -- penjualan berikutnya setelah migrasi/restore bisa memakai nomor yang
@@ -952,15 +956,16 @@ begin
   on conflict (hari) do update
     set urut = greatest(penjualan_counter.urut, excluded.urut);
 
-  if jsonb_typeof(p_db -> 'mutasi') = 'array' then
-    insert into mutasi
-    select * from jsonb_populate_recordset(null::mutasi, p_db -> 'mutasi');
+  insert into mutasi
+  select * from jsonb_populate_recordset(null::mutasi, p_db -> 'mutasi');
+
+  if exists (select 1 from mutasi where jumlah::text in ('NaN', 'Infinity', '-Infinity')) then
+    raise exception 'Jumlah mutasi pada snapshot tidak valid. Data tidak diganti.'
+      using errcode = '22023';
   end if;
 
-  if jsonb_typeof(p_db -> 'log') = 'array' then
-    insert into log_aktivitas
-    select * from jsonb_populate_recordset(null::log_aktivitas, p_db -> 'log');
-  end if;
+  insert into log_aktivitas
+  select * from jsonb_populate_recordset(null::log_aktivitas, p_db -> 'log');
 
   -- Tolak snapshot yang menghasilkan stok negatif (mis. backup rusak).
   perform public.banggala_pastikan_stok_bahan_tidak_negatif(b.id, coalesce(s.total, 0))

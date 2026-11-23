@@ -120,14 +120,13 @@ function barisLog(log?: LogAktivitas) {
   return log ? mapLogToRow(log) : null
 }
 
-export async function catatPenjualanCloud(input: {
+export async function catatPenjualanCloud(klien: ReturnType<typeof pastikanKlien>, input: {
   id: string
   tanggal: string
   items: { menuId: string; jumlah: number }[]
   catatan?: string
   log?: LogAktivitas
 }): Promise<HasilPenjualanCloud> {
-  const klien = pastikanKlien()
   const { data, error } = await klien.rpc('catat_penjualan', {
     p_id: input.id,
     p_tanggal: input.tanggal,
@@ -139,14 +138,13 @@ export async function catatPenjualanCloud(input: {
   return petakanHasilPenjualan(data as HasilPenjualanRpc)
 }
 
-export async function ubahPenjualanCloud(input: {
+export async function ubahPenjualanCloud(klien: ReturnType<typeof pastikanKlien>, input: {
   id: string
   tanggal: string
   items: { menuId: string; jumlah: number }[]
   catatan?: string
   log?: LogAktivitas
 }): Promise<HasilPenjualanCloud> {
-  const klien = pastikanKlien()
   const { data, error } = await klien.rpc('ubah_penjualan', {
     p_id: input.id,
     p_tanggal: input.tanggal,
@@ -159,10 +157,10 @@ export async function ubahPenjualanCloud(input: {
 }
 
 export async function hapusPenjualanCloud(
+  klien: ReturnType<typeof pastikanKlien>,
   id: string,
   log?: LogAktivitas,
 ): Promise<void> {
-  const klien = pastikanKlien()
   const { error } = await klien.rpc('hapus_penjualan', {
     p_id: id,
     p_log: barisLog(log),
@@ -175,10 +173,10 @@ export async function hapusPenjualanCloud(
 // ==============================================================================
 
 export async function catatMutasiCloud(
+  klien: ReturnType<typeof pastikanKlien>,
   mutasi: Mutasi,
   log?: LogAktivitas,
 ): Promise<Mutasi> {
-  const klien = pastikanKlien()
   const { data, error } = await klien.rpc('catat_mutasi', {
     p_id: mutasi.id,
     p_bahan_id: mutasi.bahanId,
@@ -194,10 +192,10 @@ export async function catatMutasiCloud(
 }
 
 export async function ubahMutasiCloud(
+  klien: ReturnType<typeof pastikanKlien>,
   mutasi: Mutasi,
   log?: LogAktivitas,
 ): Promise<Mutasi> {
-  const klien = pastikanKlien()
   const { data, error } = await klien.rpc('ubah_mutasi', {
     p_id: mutasi.id,
     p_bahan_id: mutasi.bahanId,
@@ -213,10 +211,10 @@ export async function ubahMutasiCloud(
 }
 
 export async function hapusMutasiCloud(
+  klien: ReturnType<typeof pastikanKlien>,
   id: string,
   log?: LogAktivitas,
 ): Promise<void> {
-  const klien = pastikanKlien()
   const { error } = await klien.rpc('hapus_mutasi', {
     p_id: id,
     p_log: barisLog(log),

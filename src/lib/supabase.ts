@@ -68,6 +68,20 @@ export const supabase: SupabaseClient | null = apakahSupabaseAktif
     })
   : null
 
+export function klienDenganToken(token: string): SupabaseClient {
+  return createClient(rawUrl!, rawAnonKey!, {
+    global: { headers: { 'x-application-name': 'banggala-stock' } },
+    accessToken: async () => token,
+  })
+}
+
+export function tokenUntukAkun(
+  sesi: { user: { id: string }; access_token: string } | null,
+  userId: string,
+): string | null {
+  return sesi?.user.id === userId ? sesi.access_token : null
+}
+
 if (!apakahSupabaseAktif) {
   console.info(
     '[Banggala Stock] Supabase belum dikonfigurasi. Berjalan dalam mode lokal (localStorage + PBKDF2).',

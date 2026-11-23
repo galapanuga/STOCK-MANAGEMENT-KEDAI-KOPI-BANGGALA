@@ -47,6 +47,7 @@ export function MutasiPage() {
   const [tipeAwal, setTipeAwal] = useState<MutasiTipe>('masuk')
   const [bahanAwal, setBahanAwal] = useState('')
   const [targetHapus, setTargetHapus] = useState<Mutasi | null>(null)
+  const [menghapus, setMenghapus] = useState(false)
 
   useEffect(() => {
     const form = params.get('form')
@@ -121,15 +122,17 @@ export function MutasiPage() {
     setSampai('')
   }
 
-  const konfirmasiHapus = () => {
-    if (!targetHapus) return
+  const konfirmasiHapus = async () => {
+    if (!targetHapus || menghapus) return
+    setMenghapus(true)
     try {
-      hapusMutasi(targetHapus.id)
+      await hapusMutasi(targetHapus.id)
       toast.sukses('Mutasi berhasil dihapus. Stok telah disesuaikan.')
+      setTargetHapus(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal menghapus mutasi.')
     } finally {
-      setTargetHapus(null)
+      setMenghapus(false)
     }
   }
 
@@ -416,12 +419,12 @@ export function MutasiPage() {
         mutasi={diedit}
         tipeAwal={tipeAwal}
         bahanAwal={bahanAwal}
-        onSimpan={(input) => {
+        onSimpan={async (input) => {
           if (diedit) {
-            ubahMutasi(diedit.id, input)
+            await ubahMutasi(diedit.id, input)
             toast.sukses('Mutasi berhasil diperbarui.')
           } else {
-            tambahMutasi(input)
+            await tambahMutasi(input)
             toast.sukses(
               input.tipe === 'masuk'
                 ? 'Stok masuk berhasil dicatat.'
@@ -453,7 +456,8 @@ export function MutasiPage() {
         }
         labelKonfirmasi="Hapus mutasi"
         bahaya
-        onTutup={() => setTargetHapus(null)}
+        sedangProses={menghapus}
+        onTutup={() => { if (!menghapus) setTargetHapus(null) }}
         onKonfirmasi={konfirmasiHapus}
       />
     </div>
@@ -473,7 +477,7 @@ function MutasiModal({
   mutasi: Mutasi | null
   tipeAwal: MutasiTipe
   bahanAwal: string
-  onSimpan: (input: InputMutasi) => void
+  onSimpan: (input: InputMutasi) => Promise<void>
 }) {
   const { db, stok } = useData()
   const [tipe, setTipe] = useState<MutasiTipe>('masuk')
@@ -483,6 +487,7 @@ function MutasiModal({
   const [keterangan, setKeterangan] = useState('')
   const [tanggal, setTanggal] = useState(sekarangInput())
   const [galat, setGalat] = useState('')
+  const [menyimpan, setMenyimpan] = useState(false)
 
   const opsiBahan = useMemo(() => {
     const aktif = db.bahan.filter((b) => !b.arsip)
@@ -528,7 +533,8 @@ function MutasiModal({
   const stokSetelah =
     tipe === 'masuk' ? dasarStok + jumlahAngka : dasarStok - jumlahAngka
 
-  const kirim = () => {
+  const kirim = async () => {
+    if (menyimpan) return
     setGalat('')
     if (!bahanId) {
       setGalat('Pilih bahan terlebih dahulu.')
@@ -550,8 +556,9 @@ function MutasiModal({
       return
     }
 
+    setMenyimpan(true)
     try {
-      onSimpan({
+      await onSimpan({
         bahanId,
         tipe,
         jumlah: jumlahAngka,
@@ -561,13 +568,15 @@ function MutasiModal({
       })
     } catch (error) {
       setGalat(error instanceof Error ? error.message : 'Gagal menyimpan mutasi.')
+    } finally {
+      setMenyimpan(false)
     }
   }
 
   return (
     <Modal
       buka={buka}
-      tutup={tutup}
+      tutup={() => { if (!menyimpan) tutup() }}
       judul={mutasi ? 'Ubah Mutasi' : tipe === 'masuk' ? 'Catat Stok Masuk' : 'Catat Stok Keluar'}
       deskripsi={
         mutasi
@@ -579,18 +588,18 @@ function MutasiModal({
       lebar="lg"
       footer={
         <>
-          <button className="btn btn-outline" onClick={tutup}>
+          <button className="btn btn-outline" onClick={tutup} disabled={menyimpan}>
             Batal
           </button>
-          <button className="btn btn-primary" onClick={kirim}>
-            {mutasi ? 'Simpan perubahan' : 'Simpan mutasi'}
+          <button className="btn btn-primary" onClick={kirim} disabled={menyimpan}>
+            {menyimpan ? 'Menyimpan…' : mutasi ? 'Simpan perubahan' : 'Simpan mutasi'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         {galat && (
-          <p className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
+          <p role="alert" className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
             {galat}
           </p>
         )}

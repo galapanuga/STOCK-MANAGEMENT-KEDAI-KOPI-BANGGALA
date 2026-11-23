@@ -9,9 +9,11 @@ import {
 import { apakahSupabaseAktif, periksaKoneksiOnline } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { ConfirmDialog } from './ui/Modal'
 
 export function StatusKoneksi() {
-  const { sinkronUlang } = useAuth()
+  const { sinkronUlang, user } = useAuth()
+  const adminAktif = user?.aktif && user.role === 'admin'
   const toast = useToast()
   const [online, setOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -23,10 +25,12 @@ export function StatusKoneksi() {
   const [memeriksa, setMemeriksa] = useState<boolean>(false)
   const [panelBuka, setPanelBuka] = useState(false)
   const [daftarKonflik, setDaftarKonflik] = useState<OutboxItem[]>([])
+  const [targetBuang, setTargetBuang] = useState<OutboxItem | null>(null)
+  const [membuang, setMembuang] = useState(false)
 
   const muatKonflik = useCallback(async () => {
     const semua = await ambilSemuaAntrean()
-    setDaftarKonflik(semua.filter((item) => item.status === 'konflik'))
+    setDaftarKonflik(semua.filter((item) => !item.pemilikId || item.status === 'konflik'))
   }, [])
 
   // 1. Langganan status outbox queue
@@ -103,12 +107,17 @@ export function StatusKoneksi() {
     }
   }
 
-  const buangItem = async (id: string) => {
+  const buangItem = async () => {
+    if (!adminAktif || !targetBuang || membuang) return
+    setMembuang(true)
     try {
-      await abaikanKonflik(id)
+      await abaikanKonflik(targetBuang.id)
+      setTargetBuang(null)
       await muatKonflik()
-    } catch {
-      toast.error('Antrean tidak dapat diperbarui. Coba lagi.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Antrean tidak dapat diperbarui. Coba lagi.')
+    } finally {
+      setMembuang(false)
     }
   }
 
@@ -117,7 +126,7 @@ export function StatusKoneksi() {
       type="button"
       onClick={() => setPanelBuka((v) => !v)}
       className="flex items-center gap-1.5 rounded-full border border-danger/40 bg-danger-soft px-2.5 py-1 text-[11px] font-semibold text-danger hover:bg-danger/10 transition-colors"
-      title={`${konflikCount} transaksi ditolak server dan menunggu keputusan admin.`}
+      title={`${konflikCount} entri antrean perlu diperiksa.`}
     >
       <span className="size-2 rounded-full bg-danger" />
       <span>{konflikCount} Konflik</span>
@@ -138,8 +147,7 @@ export function StatusKoneksi() {
         </button>
       </div>
       <p className="mb-3 text-[10px] leading-relaxed text-muted">
-        Data ini <b>tidak dihapus</b>. Periksa stok, lalu coba kirim ulang atau
-        buang jika memang sudah tidak diperlukan.
+        Hanya pemilik yang bisa mengirim ulang. Hubungi admin untuk meninjau entri lama atau membuang konflik.
       </p>
       <div className="max-h-64 space-y-2 overflow-y-auto">
         {daftarKonflik.map((item) => (
@@ -148,27 +156,47 @@ export function StatusKoneksi() {
               {item.aksi} · {new Date(item.createdAt).toLocaleString('id-ID')}
             </p>
             <p className="mt-0.5 text-[10px] leading-snug text-danger">
-              {item.lastError ?? 'Ditolak server.'}
+              {!item.pemilikId ? 'Entri lama tanpa pemilik. Tidak akan dikirim otomatis.' : item.lastError ?? 'Ditolak server.'}
             </p>
             <div className="mt-2 flex gap-2">
-              <button
+              {item.pemilikId && item.pemilikId === user?.id && <button
                 type="button"
                 className="btn btn-outline btn-sm"
+                disabled={!online}
                 onClick={() => cobaItem(item.id)}
               >
                 Coba lagi
-              </button>
-              <button
+              </button>}
+              {adminAktif && <button
                 type="button"
                 className="btn btn-ghost btn-sm text-danger"
-                onClick={() => buangItem(item.id)}
+                disabled={!online}
+                onClick={() => setTargetBuang(item)}
               >
                 Buang
-              </button>
+              </button>}
             </div>
           </div>
         ))}
       </div>
+      <ConfirmDialog
+        buka={targetBuang !== null && Boolean(adminAktif)}
+        judul="Buang entri antrean?"
+        pesan={targetBuang && (
+          <>
+            {targetBuang.aksi} · {new Date(targetBuang.createdAt).toLocaleString('id-ID')}
+            <br />
+            ID antrean: <b className="break-all">{targetBuang.id}</b>
+            <br />
+            Salinan pada perangkat ini akan dihapus dan tidak bisa dipulihkan.
+          </>
+        )}
+        labelKonfirmasi="Buang entri"
+        bahaya
+        sedangProses={membuang}
+        onTutup={() => { if (!membuang) setTargetBuang(null) }}
+        onKonfirmasi={buangItem}
+      />
     </div>
   )
 
@@ -222,7 +250,7 @@ export function StatusKoneksi() {
         className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning-strong hover:bg-warning/20 transition-colors"
         title={
           tertundaCount > 0
-            ? `${tertundaCount} data tersimpan di antrean offline lokal. Klik untuk mencoba sinkronisasi sekarang.`
+            ? `${tertundaCount} entri belum terkirim. Klik untuk menyinkronkan entri milik akun ini.`
             : 'Koneksi internet terputus. Data tetap tersimpan aman di perangkat.'
         }
       >

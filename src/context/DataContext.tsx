@@ -27,7 +27,7 @@ import { formatAngka } from '../lib/format'
 import { hitungStok } from '../lib/stock'
 import { kebutuhanBahan, menuTanpaResep, periksaKetersediaan } from '../lib/menu'
 import { buatDatabaseAwal } from '../lib/seed'
-import { normalisasiDB } from '../lib/storage'
+import { bacaBackup } from '../lib/storage'
 import { useAuth } from './AuthContext'
 import { gantiSemuaDataCloud, simpanLogCloud } from '../lib/cloudDb'
 import {
@@ -53,30 +53,40 @@ import { apakahSupabaseAktif } from '../lib/supabase'
  * terputus di tengah pengiriman, dan snapshot cloud tidak akan menimpa data
  * yang belum sempat terkirim.
  */
-function kirimAtauAntrekan(
+async function simpanKeAntrean<T extends { log: LogAktivitas }>(
   aksi: OutboxAksi,
   tipeOperasi: 'insert' | 'update' | 'delete',
-  payload: unknown,
+  payload: T,
 ) {
   if (!apakahSupabaseAktif) return
 
-  antrekanAksi({ aksi, tipeOperasi, payload })
-    .then(() => {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        prosesAntreanOutbox().catch((error) => {
-          console.warn(`[Outbox] Gagal memproses ${aksi}:`, error)
-        })
-      }
+  try {
+    if (payload.log.userId === 'sistem') throw new Error('Sesi pengguna tidak tersedia.')
+    await antrekanAksi({ aksi, tipeOperasi, payload, pemilikId: payload.log.userId })
+  } catch (cause) {
+    throw new Error('Belum tersimpan. Periksa penyimpanan browser, lalu coba lagi.', { cause })
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine) {
+    prosesAntreanOutbox().catch((error) => {
+      console.warn(`[Outbox] Gagal memproses ${aksi}:`, error)
     })
-    .catch((error) => {
-      console.error('[Outbox] Gagal menyimpan perubahan ke antrean:', error)
-      siarkanPeristiwa({
-        tipe: 'penolakan',
-        pesan:
-          'Perubahan tampil di layar tetapi gagal masuk antrean sinkronisasi. Periksa penyimpanan browser lalu muat ulang aplikasi.',
-        kode: 'OUTBOX_GAGAL',
-      })
+  }
+}
+
+function kirimAtauAntrekan<T extends { log: LogAktivitas }>(
+  aksi: OutboxAksi,
+  tipeOperasi: 'insert' | 'update' | 'delete',
+  payload: T,
+) {
+  simpanKeAntrean(aksi, tipeOperasi, payload).catch((error) => {
+    console.error('[Outbox] Gagal menyimpan perubahan ke antrean:', error)
+    siarkanPeristiwa({
+      tipe: 'penolakan',
+      pesan:
+        'Perubahan tampil di layar tetapi gagal masuk antrean sinkronisasi. Periksa penyimpanan browser lalu muat ulang aplikasi.',
+      kode: 'OUTBOX_GAGAL',
     })
+  })
 }
 export interface InputBahan {
   nama: string
@@ -123,18 +133,18 @@ interface DataContextValue {
   stok: Map<string, StokInfo>
   bahanMap: Map<string, Bahan>
   menuMap: Map<string, Menu>
-  tambahBahan: (input: InputBahan) => Bahan
-  ubahBahan: (id: string, input: InputBahan) => void
-  arsipBahan: (id: string, arsip: boolean) => void
-  tambahMutasi: (input: InputMutasi) => Mutasi
-  ubahMutasi: (id: string, input: InputMutasi) => void
-  hapusMutasi: (id: string) => void
-  tambahMenu: (input: InputMenu) => Menu
-  ubahMenu: (id: string, input: InputMenu) => void
-  arsipMenu: (id: string, arsip: boolean) => void
-  catatPenjualan: (input: InputPenjualan) => Penjualan
-  ubahPenjualan: (id: string, input: InputPenjualan) => void
-  hapusPenjualan: (id: string) => void
+  tambahBahan: (input: InputBahan) => Promise<Bahan>
+  ubahBahan: (id: string, input: InputBahan) => Promise<void>
+  arsipBahan: (id: string, arsip: boolean) => Promise<void>
+  tambahMutasi: (input: InputMutasi) => Promise<Mutasi>
+  ubahMutasi: (id: string, input: InputMutasi) => Promise<void>
+  hapusMutasi: (id: string) => Promise<void>
+  tambahMenu: (input: InputMenu) => Promise<Menu>
+  ubahMenu: (id: string, input: InputMenu) => Promise<void>
+  arsipMenu: (id: string, arsip: boolean) => Promise<void>
+  catatPenjualan: (input: InputPenjualan) => Promise<Penjualan>
+  ubahPenjualan: (id: string, input: InputPenjualan) => Promise<void>
+  hapusPenjualan: (id: string) => Promise<void>
   tambahUser: (input: InputUser) => Promise<void>
   ubahUser: (
     id: string,
@@ -331,7 +341,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [modeOnline, user?.role])
 
   const tambahBahan = useCallback(
-    (input: InputBahan): Bahan => {
+    async (input: InputBahan): Promise<Bahan> => {
       pastikanBolehKelolaMaster()
       const nama = input.nama.trim()
       if (!nama) throw new Error('Nama bahan wajib diisi.')
@@ -379,6 +389,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         `Menambahkan bahan "${nama}"${mutasiBaru ? ` dengan stok awal ${formatAngka(stokAwal)} ${bahanBaru.satuan}` : ''}`,
       )
 
+      await simpanKeAntrean('bahan', 'insert', { bahan: bahanBaru, log, mutasiAwal: mutasiBaru })
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -389,19 +400,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      kirimAtauAntrekan('bahan', 'insert', {
-        bahan: bahanBaru,
-        log,
-        mutasiAwal: mutasiBaru,
-      })
-
       return bahanBaru
     },
     [buatLog, db.bahan, pastikanBolehKelolaMaster, setDb, user],
   )
 
   const ubahBahan = useCallback(
-    (id: string, input: InputBahan) => {
+    async (id: string, input: InputBahan) => {
       pastikanBolehKelolaMaster()
       const nama = input.nama.trim()
       if (!nama) throw new Error('Nama bahan wajib diisi.')
@@ -421,25 +426,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!lama) throw new Error('Bahan tidak ditemukan.')
 
       const log = buatLog('Ubah bahan', `Memperbarui bahan "${nama}"`)
-      setDb((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          bahan: prev.bahan.map((b) =>
-            b.id === id
-              ? {
-                  ...b,
-                  nama,
-                  kategori: input.kategori.trim() || 'Lainnya',
-                  satuan: input.satuan.trim(),
-                  stokMin: input.stokMin,
-                }
-              : b,
-          ),
-          log: [log, ...prev.log].slice(0, 250),
-        }
-      })
-
       const bahanDiperbarui: Bahan = {
         ...lama,
         nama,
@@ -447,13 +433,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
         satuan: input.satuan.trim(),
         stokMin: input.stokMin,
       }
-      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log })
+      await simpanKeAntrean('bahan', 'update', { bahan: bahanDiperbarui, log })
+      setDb((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          bahan: prev.bahan.map((b) =>
+            b.id === id ? bahanDiperbarui : b,
+          ),
+          log: [log, ...prev.log].slice(0, 250),
+        }
+      })
+
     },
     [buatLog, db.bahan, pastikanBolehKelolaMaster, setDb],
   )
 
   const arsipBahan = useCallback(
-    (id: string, arsip: boolean) => {
+    async (id: string, arsip: boolean) => {
       pastikanBolehKelolaMaster()
       const bahan = db.bahan.find((b) => b.id === id)
       if (!bahan) throw new Error('Bahan tidak ditemukan.')
@@ -461,6 +458,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         arsip ? 'Arsipkan bahan' : 'Aktifkan bahan',
         `${arsip ? 'Mengarsipkan' : 'Mengaktifkan'} bahan "${bahan.nama}"`,
       )
+      await simpanKeAntrean('bahan', 'update', { bahan: { ...bahan, arsip }, log })
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -470,8 +468,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      const bahanDiperbarui: Bahan = { ...bahan, arsip }
-      kirimAtauAntrekan('bahan', 'update', { bahan: bahanDiperbarui, log })
     },
     [buatLog, db.bahan, pastikanBolehKelolaMaster, setDb],
   )
@@ -506,7 +502,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   )
 
   const tambahMutasi = useCallback(
-    (input: InputMutasi): Mutasi => {
+    async (input: InputMutasi): Promise<Mutasi> => {
       const bahan = validasiMutasi(input)
       const sekarang = new Date().toISOString()
       const mutasi: Mutasi = {
@@ -527,6 +523,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         `${bahan.nama} ${input.tipe === 'masuk' ? '+' : '−'}${formatAngka(input.jumlah)} ${bahan.satuan}`,
       )
 
+      await simpanKeAntrean('mutasi', 'insert', { mode: 'insert', mutasi, log })
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -536,15 +533,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      kirimAtauAntrekan('mutasi', 'insert', { mode: 'insert', mutasi, log })
-
       return mutasi
     },
     [buatLog, setDb, user, validasiMutasi],
   )
 
   const ubahMutasi = useCallback(
-    (id: string, input: InputMutasi) => {
+    async (id: string, input: InputMutasi) => {
       const lama = db.mutasi.find((m) => m.id === id)
       if (!lama) throw new Error('Mutasi tidak ditemukan.')
       if (lama.penjualanId) {
@@ -557,27 +552,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         `Memperbarui mutasi ${bahan.nama} menjadi ${formatAngka(input.jumlah)} ${bahan.satuan}`,
       )
 
-      setDb((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          mutasi: prev.mutasi.map((m) =>
-            m.id === id
-              ? {
-                  ...m,
-                  bahanId: input.bahanId,
-                  tipe: input.tipe,
-                  jumlah: input.jumlah,
-                  alasan: input.alasan?.trim() || undefined,
-                  keterangan: input.keterangan?.trim() || undefined,
-                  tanggal: input.tanggal || m.tanggal,
-                }
-              : m,
-          ),
-          log: [log, ...prev.log].slice(0, 250),
-        }
-      })
-
       const mutasiDiperbarui: Mutasi = {
         ...lama,
         bahanId: input.bahanId,
@@ -587,16 +561,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
         keterangan: input.keterangan?.trim() || undefined,
         tanggal: input.tanggal || lama.tanggal,
       }
-      kirimAtauAntrekan('mutasi', 'update', {
+      await simpanKeAntrean('mutasi', 'update', {
         mode: 'update',
         mutasi: mutasiDiperbarui,
         log,
+      })
+      setDb((prev) => prev && {
+        ...prev,
+        mutasi: prev.mutasi.map((m) => (m.id === id ? mutasiDiperbarui : m)),
+        log: [log, ...prev.log].slice(0, 250),
       })
     },
     [buatLog, db.mutasi, setDb, validasiMutasi],
   )
   const hapusMutasi = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const lama = db.mutasi.find((m) => m.id === id)
       if (!lama) return
       if (lama.penjualanId) {
@@ -607,6 +586,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         'Hapus mutasi',
         `Menghapus mutasi ${bahan?.nama ?? lama.bahanId} (${lama.tipe} ${formatAngka(lama.jumlah)})`,
       )
+      await simpanKeAntrean('hapus_mutasi', 'delete', { id, log })
       setDb((prev) => {
         if (!prev) return prev
         return {
@@ -616,7 +596,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-      kirimAtauAntrekan('hapus_mutasi', 'delete', { id, log })
     },
     [buatLog, db.bahan, db.mutasi, setDb],
   )
@@ -648,7 +627,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   )
 
   const tambahMenu = useCallback(
-    (input: InputMenu): Menu => {
+    async (input: InputMenu): Promise<Menu> => {
       pastikanBolehKelolaMaster()
       const data = validasiMenu(input)
       const menuBaru: Menu = {
@@ -661,6 +640,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         'Tambah menu',
         `Menambahkan menu "${menuBaru.nama}"${menuBaru.resep.length > 0 ? ` dengan ${menuBaru.resep.length} bahan resep` : ' tanpa resep'}`,
       )
+      await simpanKeAntrean('menu', 'insert', { menu: menuBaru, log })
       setDb((prev) =>
         prev
           ? {
@@ -671,19 +651,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      kirimAtauAntrekan('menu', 'insert', { menu: menuBaru, log })
       return menuBaru
     },
     [buatLog, pastikanBolehKelolaMaster, setDb, validasiMenu],
   )
 
   const ubahMenu = useCallback(
-    (id: string, input: InputMenu) => {
+    async (id: string, input: InputMenu) => {
       pastikanBolehKelolaMaster()
       const lama = db.menu.find((m) => m.id === id)
       if (!lama) throw new Error('Menu tidak ditemukan.')
       const data = validasiMenu(input, id)
       const log = buatLog('Ubah menu', `Memperbarui menu "${data.nama}"`)
+      await simpanKeAntrean('menu', 'update', { menu: { ...lama, ...data }, log })
       setDb((prev) =>
         prev
           ? {
@@ -694,14 +674,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      const menuDiperbarui: Menu = { ...lama, ...data }
-      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log })
     },
     [buatLog, db.menu, pastikanBolehKelolaMaster, setDb, validasiMenu],
   )
 
   const arsipMenu = useCallback(
-    (id: string, arsip: boolean) => {
+    async (id: string, arsip: boolean) => {
       pastikanBolehKelolaMaster()
       const menu = db.menu.find((m) => m.id === id)
       if (!menu) throw new Error('Menu tidak ditemukan.')
@@ -709,6 +687,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         arsip ? 'Arsipkan menu' : 'Aktifkan menu',
         `${arsip ? 'Mengarsipkan' : 'Mengaktifkan'} menu "${menu.nama}"`,
       )
+      await simpanKeAntrean('menu', 'update', { menu: { ...menu, arsip }, log })
       setDb((prev) =>
         prev
           ? {
@@ -719,14 +698,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      const menuDiperbarui: Menu = { ...menu, arsip }
-      kirimAtauAntrekan('menu', 'update', { menu: menuDiperbarui, log })
     },
     [buatLog, db.menu, pastikanBolehKelolaMaster, setDb],
   )
 
   const catatPenjualan = useCallback(
-    (input: InputPenjualan): Penjualan => {
+    async (input: InputPenjualan): Promise<Penjualan> => {
       const tanggal = input.tanggal || new Date().toISOString()
       const waktu = new Date(tanggal)
       if (Number.isNaN(waktu.getTime())) throw new Error('Tanggal penjualan tidak valid.')
@@ -761,6 +738,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         `${nomor} · ${hasil.items.length} menu · ${formatAngka(totalQty)} item${hasil.stokTerpotong ? '' : ' (sebagian stok tidak terpotong)'}`,
       )
 
+      await simpanKeAntrean('penjualan', 'insert', {
+        mode: 'insert',
+        id,
+        tanggal: penjualan.tanggal,
+        items: input.items.filter((it) => it.jumlah > 0),
+        catatan: penjualan.catatan,
+        log,
+      })
       setDb((prev) =>
         prev
           ? {
@@ -772,24 +757,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      const payloadCloud = {
-        mode: 'insert' as const,
-        id,
-        tanggal: penjualan.tanggal,
-        items: input.items.filter((it) => it.jumlah > 0),
-        catatan: input.catatan?.trim() || undefined,
-        log,
-      }
-
-      kirimAtauAntrekan('penjualan', 'insert', payloadCloud)
-
       return penjualan
     },
     [buatLog, db, setDb, stok, user],
   )
 
   const ubahPenjualan = useCallback(
-    (id: string, input: InputPenjualan) => {
+    async (id: string, input: InputPenjualan) => {
       if (user?.role !== 'admin') {
         throw new Error('Hanya admin yang dapat mengubah penjualan.')
       }
@@ -828,6 +802,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         `Memperbarui ${lama.nomor} · ${hasil.items.length} menu`,
       )
 
+      await simpanKeAntrean('penjualan', 'update', {
+        mode: 'update',
+        id,
+        tanggal: penjualan.tanggal,
+        items: input.items.filter((it) => it.jumlah > 0),
+        catatan: penjualan.catatan,
+        log,
+      })
       setDb((prev) =>
         prev
           ? {
@@ -842,22 +824,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      const payloadCloud = {
-        mode: 'update' as const,
-        id,
-        tanggal: penjualan.tanggal,
-        items: input.items.filter((it) => it.jumlah > 0),
-        catatan: input.catatan?.trim() || undefined,
-        log,
-      }
-
-      kirimAtauAntrekan('penjualan', 'update', payloadCloud)
     },
     [buatLog, db, setDb, user],
   )
 
   const hapusPenjualan = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (user?.role !== 'admin') {
         throw new Error('Hanya admin yang dapat menghapus penjualan.')
       }
@@ -867,6 +839,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         'Hapus penjualan',
         `Menghapus ${lama.nomor} dan mengembalikan stok bahan terkait`,
       )
+      await simpanKeAntrean('hapus_penjualan', 'delete', { id, log })
       setDb((prev) =>
         prev
           ? {
@@ -878,7 +851,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : prev,
       )
 
-      kirimAtauAntrekan('hapus_penjualan', 'delete', { id, log })
     },
     [buatLog, db.penjualan, setDb, user],
   )
@@ -1141,11 +1113,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const pulihkanBackup = useCallback(
     async (data: DB) => {
-      if (!data || !Array.isArray(data.users) || !Array.isArray(data.bahan)) {
-        throw new Error('File backup tidak valid.')
-      }
-
-      const bersih = normalisasiDB(data)
+      const bersih = bacaBackup(data)
       const log = buatLog('Pulihkan backup', 'Memulihkan data dari file backup')
 
       if (modeOnline) {
@@ -1157,7 +1125,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const hasil: DB = {
           ...bersih,
           users: db.users,
-          log: [log, ...bersih.log].slice(0, 250),
         }
         await gantiSemuaDataCloud(hasil, log)
         setDb(hasil)

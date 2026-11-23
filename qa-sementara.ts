@@ -19,11 +19,12 @@ import {
   totalItem,
 } from './src/lib/menu'
 import { hitungStok, penjualanHarian, ringkasanPeriode } from './src/lib/stock'
-import { normalisasiDB } from './src/lib/storage'
+import { bacaBackup, normalisasiDB } from './src/lib/storage'
+import { tokenUntukAkun } from './src/lib/supabase'
 import { statusBukaSekarang } from './src/lib/operasional'
 import { buatDatabaseAwal } from './src/lib/seed'
 import { gantiSemuaDataCloud } from './src/lib/cloudDb'
-import { pastikanAntreanKosong, prosesAntreanOutbox } from './src/lib/outboxQueue'
+import { antrekanAksi, pastikanAntreanKosong, prosesAntreanOutbox } from './src/lib/outboxQueue'
 
 let jumlahCek = 0
 const gagal: string[] = []
@@ -435,6 +436,71 @@ async function main(): Promise<void> {
   cek(proses === prosesAntreanOutbox(), 'Pemicu bersamaan menunggu proses antrean yang sama')
   const guard = await pastikanAntreanKosong().catch((error) => error)
   cek(guard instanceof Error && guard.message.includes('Data tidak diganti'), 'Penggantian data diblokir jika antrean tidak dapat dibaca')
+
+  const khusus = { ...db, bahan: [], menu: [], mutasi: [], penjualan: [] }
+  cek(JSON.stringify(normalisasiDB(khusus)) === JSON.stringify(khusus), 'Snapshot v2 tidak ditambah katalog atau stok contoh')
+  const backupKhusus = {
+    ...db,
+    bahan: db.bahan.filter((b) => b.id !== 'bhn_oat'),
+    mutasi: db.mutasi.filter((m) => m.bahanId !== 'bhn_oat'),
+    log: [],
+  }
+  const pulih = bacaBackup(JSON.parse(JSON.stringify(backupKhusus)))
+  cek(JSON.stringify(pulih) === JSON.stringify(backupKhusus), 'Backup v2 dengan katalog sendiri pulih tanpa perubahan')
+  for (const versi of [1, 2]) {
+    try {
+      bacaBackup({ ...backupKhusus, version: versi, penjualan: undefined })
+      cek(false, `Backup v${versi} tanpa daftar penjualan ditolak`)
+    } catch (error) {
+      cek(error instanceof Error && error.message.includes('penjualan'), `Backup v${versi} tanpa daftar penjualan ditolak`)
+    }
+  }
+  const [mutasi] = backupKhusus.mutasi
+  for (const daftar of [[{ ...mutasi, jumlah: undefined }], [{ ...mutasi, bahanId: 'hilang' }], [mutasi, mutasi]]) {
+    try {
+      bacaBackup({ ...backupKhusus, mutasi: daftar })
+      cek(false, 'Backup dengan mutasi rusak ditolak')
+    } catch (error) {
+      cek(error instanceof Error && error.message.includes(mutasi.id), 'Backup dengan mutasi rusak ditolak dan ID ditampilkan')
+    }
+  }
+  const sesi = { user: { id: 'kasir-a' }, access_token: 'token-a' }
+  sama(tokenUntukAkun(sesi, 'kasir-a'), 'token-a', 'Antrean dikirim dengan token pemilik')
+  sama(tokenUntukAkun(sesi, 'kasir-b'), null, 'Token kasir lain tidak dapat mengirim antrean')
+  sama(tokenUntukAkun(null, 'kasir-a'), null, 'Antrean tidak dikirim tanpa sesi')
+
+  let pemilikTersimpan: string | undefined
+  const tulis = { onsuccess: () => {} }
+  const tx = {
+    error: new Error('Commit gagal'),
+    onabort: () => {},
+    objectStore: () => ({
+      add: (item: { pemilikId?: string }) => {
+        pemilikTersimpan = item.pemilikId
+        return tulis
+      },
+    }),
+  }
+  const buka = { result: { transaction: () => tx, onclose: () => {} }, onsuccess: () => {} }
+  Object.assign(globalThis, {
+    window: { indexedDB: true },
+    indexedDB: { open: () => { queueMicrotask(() => buka.onsuccess()); return buka } },
+  })
+  try {
+    const simpan = antrekanAksi({ aksi: 'penjualan', tipeOperasi: 'insert', payload: {}, pemilikId: 'kasir-a' })
+    const hasilSimpan = simpan.catch((error) => error)
+    await Promise.resolve()
+    await Promise.resolve()
+    sama(pemilikTersimpan, 'kasir-a', 'Pemilik ditulis bersama entri antrean')
+    tulis.onsuccess()
+    tx.onabort()
+    const galat = await hasilSimpan
+    cek(galat === tx.error, 'Penulisan antrean yang dibatalkan setelah add sukses tetap dilaporkan gagal')
+  } finally {
+    buka.result.onclose()
+    Reflect.deleteProperty(globalThis, 'window')
+    Reflect.deleteProperty(globalThis, 'indexedDB')
+  }
 
   const backupBesar = {
     ...db,

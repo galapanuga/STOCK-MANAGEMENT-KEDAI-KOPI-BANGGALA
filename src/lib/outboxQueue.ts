@@ -12,6 +12,7 @@ import { uid } from './id'
 import { siarkanPeristiwa } from './peristiwa'
 import {
   GalatRpc,
+  ambilProfilCloud,
   catatMutasiCloud,
   catatPenjualanCloud,
   hapusMutasiCloud,
@@ -19,7 +20,7 @@ import {
   ubahMutasiCloud,
   ubahPenjualanCloud,
 } from './rpc'
-import { apakahSupabaseAktif } from './supabase'
+import { apakahSupabaseAktif, klienDenganToken, supabase, tokenUntukAkun } from './supabase'
 
 const NAMA_DB = 'banggala_outbox_db'
 const VERSI_DB = 1
@@ -42,6 +43,7 @@ export type OutboxStatus = 'tertunda' | 'konflik'
 
 export interface OutboxItem {
   id: string
+  pemilikId?: string
   aksi: OutboxAksi
   tipeOperasi: 'insert' | 'update' | 'delete'
   payload: unknown
@@ -110,7 +112,7 @@ async function bacaStatusAntrean(ketat = false): Promise<StatusAntrean> {
     if (ketat) throw error
     return []
   })
-  const konflik = semua.filter((i) => i.status === 'konflik').length
+  const konflik = semua.filter((i) => !i.pemilikId || i.status === 'konflik').length
   return {
     total: semua.length,
     konflik,
@@ -152,8 +154,9 @@ export async function ambilSemuaAntrean(): Promise<OutboxItem[]> {
 }
 
 export async function antrekanAksi(
-  item: Omit<OutboxItem, 'id' | 'createdAt' | 'retryCount' | 'status'>,
+  item: Omit<OutboxItem, 'id' | 'createdAt' | 'retryCount' | 'status' | 'pemilikId'> & { pemilikId: string },
 ): Promise<void> {
+  if (!item.pemilikId) throw new Error('Pemilik antrean tidak diketahui.')
   const entri: OutboxItem = {
     id: uid('outbox'),
     ...item,
@@ -164,10 +167,9 @@ export async function antrekanAksi(
   const db = await bukaDB()
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
-    const store = tx.objectStore(STORE_NAME)
-    const req = store.add(entri)
-    req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
+    tx.oncomplete = () => resolve()
+    tx.onabort = () => reject(tx.error ?? new Error('Penulisan antrean dibatalkan.'))
+    tx.objectStore(STORE_NAME).add(entri)
   })
 
   beriTahuListeners(await bacaStatusAntrean())
@@ -178,10 +180,9 @@ export async function perbaruiAntrean(item: OutboxItem): Promise<void> {
   const db = await bukaDB()
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
-    const store = tx.objectStore(STORE_NAME)
-    const req = store.put(item)
-    req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
+    tx.oncomplete = () => resolve()
+    tx.onabort = () => reject(tx.error ?? new Error('Pembaruan antrean dibatalkan.'))
+    tx.objectStore(STORE_NAME).put(item)
   })
 }
 
@@ -190,10 +191,9 @@ export async function hapusAntrean(id: string): Promise<void> {
     const db = await bukaDB()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite')
-      const store = tx.objectStore(STORE_NAME)
-      const req = store.delete(id)
-      req.onsuccess = () => resolve()
-      req.onerror = () => reject(req.error)
+      tx.oncomplete = () => resolve()
+      tx.onabort = () => reject(tx.error ?? new Error('Penghapusan antrean dibatalkan.'))
+      tx.objectStore(STORE_NAME).delete(id)
     })
   } finally {
     beriTahuListeners(await bacaStatusAntrean())
@@ -213,7 +213,7 @@ export async function pastikanAntreanKosong(): Promise<void> {
     })
   if (semua.length === 0) return
 
-  const konflik = semua.filter((item) => item.status === 'konflik').length
+  const konflik = semua.filter((item) => !item.pemilikId || item.status === 'konflik').length
   if (konflik > 0) {
     throw new Error(
       `Masih ada ${konflik} transaksi berstatus konflik. Selesaikan dulu lewat panel Konflik di navbar sebelum mengganti seluruh data.`,
@@ -226,6 +226,19 @@ export async function pastikanAntreanKosong(): Promise<void> {
 
 /** Admin dapat membuang item konflik setelah memutuskan tindakannya. */
 export async function abaikanKonflik(id: string): Promise<void> {
+  if (!supabase || !navigator.onLine) throw new Error('Hubungkan internet untuk memverifikasi admin.')
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) throw new Error('Sesi admin tidak tersedia.')
+  const profil = await ambilProfilCloud(data.user.id)
+  if (!profil?.aktif || profil.role !== 'admin') throw new Error('Hanya admin aktif yang dapat membuang konflik.')
+  const item = (await ambilSemuaAntrean()).find((entri) => entri.id === id)
+  if (!item || (item.pemilikId && item.status !== 'konflik')) {
+    throw new Error('Hanya transaksi dalam konflik yang dapat dibuang.')
+  }
+  const sesi = await supabase.auth.getSession()
+  if (sesi.error || !tokenUntukAkun(sesi.data.session, data.user.id)) {
+    throw new Error('Sesi admin berubah. Coba lagi.')
+  }
   await hapusAntrean(id)
   siarkanPeristiwa({ tipe: 'perlu-sinkron-ulang' })
 }
@@ -234,7 +247,11 @@ export async function abaikanKonflik(id: string): Promise<void> {
 export async function cobaUlangKonflik(id: string): Promise<void> {
   const semua = await ambilSemuaAntrean()
   const item = semua.find((i) => i.id === id)
-  if (!item) return
+  const sesi = await supabase?.auth.getSession()
+  if (!item?.pemilikId || item.status !== 'konflik' || !sesi || sesi.error ||
+      !tokenUntukAkun(sesi.data.session, item.pemilikId)) {
+    throw new Error('Hanya akun pemilik yang dapat mengirim ulang konflik.')
+  }
   item.status = 'tertunda'
   item.retryCount = 0
   item.lastError = undefined
@@ -306,11 +323,15 @@ async function kirimAntrean(): Promise<{
     const antrean = await ambilSemuaAntrean()
 
     for (const item of antrean) {
-      if (item.status === 'konflik') continue
+      if (!item.pemilikId || item.status === 'konflik') continue
       if (typeof navigator !== 'undefined' && !navigator.onLine) break
+      const sesi = await supabase!.auth.getSession()
+      const token = tokenUntukAkun(sesi.error ? null : sesi.data.session, item.pemilikId)
+      if (!token) continue
 
       try {
-        await kirimItemKeCloud(item)
+        // Satu entri dapat memakai beberapa request; semuanya harus tetap atas nama pemilik.
+        await kirimItemKeCloud(item, klienDenganToken(token))
         await hapusAntrean(item.id)
         berhasil++
       } catch (err) {
@@ -361,16 +382,16 @@ async function kirimAntrean(): Promise<{
   return { berhasil, tertunda: status.tertunda, konflik: status.konflik }
 }
 
-async function tulisLog(log?: LogAktivitas) {
+async function tulisLog(klien: ReturnType<typeof klienDenganToken>, log?: LogAktivitas) {
   if (!log) return
   try {
-    await simpanLogCloud(log)
+    await simpanLogCloud(log, klien)
   } catch (error) {
     console.warn('[Outbox] Gagal menyimpan log:', error)
   }
 }
 
-async function kirimItemKeCloud(item: OutboxItem): Promise<void> {
+async function kirimItemKeCloud(item: OutboxItem, klien: ReturnType<typeof klienDenganToken>): Promise<void> {
   const p = item.payload as Record<string, unknown>
 
   switch (item.aksi) {
@@ -385,7 +406,7 @@ async function kirimItemKeCloud(item: OutboxItem): Promise<void> {
       }
       const kirim =
         payload.mode === 'update' ? ubahPenjualanCloud : catatPenjualanCloud
-      const hasil = await kirim({
+      const hasil = await kirim(klien, {
         id: payload.id,
         tanggal: payload.tanggal,
         items: payload.items,
@@ -403,7 +424,7 @@ async function kirimItemKeCloud(item: OutboxItem): Promise<void> {
 
     case 'hapus_penjualan': {
       const payload = p as { id: string; log?: LogAktivitas }
-      await hapusPenjualanCloud(payload.id, payload.log)
+      await hapusPenjualanCloud(klien, payload.id, payload.log)
       break
     }
 
@@ -414,70 +435,70 @@ async function kirimItemKeCloud(item: OutboxItem): Promise<void> {
         log?: LogAktivitas
       }
       if (payload.mode === 'update') {
-        await ubahMutasiCloud(payload.mutasi, payload.log)
+        await ubahMutasiCloud(klien, payload.mutasi, payload.log)
       } else {
-        await catatMutasiCloud(payload.mutasi, payload.log)
+        await catatMutasiCloud(klien, payload.mutasi, payload.log)
       }
       break
     }
 
     case 'hapus_mutasi': {
       const payload = p as { id: string; log?: LogAktivitas }
-      await hapusMutasiCloud(payload.id, payload.log)
+      await hapusMutasiCloud(klien, payload.id, payload.log)
       break
     }
 
     case 'bahan': {
       const payload = p as {
-        bahan: Parameters<typeof simpanBahanCloud>[0]
+        bahan: Parameters<typeof simpanBahanCloud>[1]
         log?: LogAktivitas
         mutasiAwal?: Mutasi
       }
-      await simpanBahanCloud(payload.bahan)
-      await tulisLog(payload.log)
+      await simpanBahanCloud(klien, payload.bahan)
+      await tulisLog(klien, payload.log)
       if (payload.mutasiAwal) {
-        await catatMutasiCloud(payload.mutasiAwal)
+        await catatMutasiCloud(klien, payload.mutasiAwal)
       }
       break
     }
 
     case 'hapus_bahan': {
       const payload = p as { id: string; log?: LogAktivitas }
-      await hapusBahanCloud(payload.id)
-      await tulisLog(payload.log)
+      await hapusBahanCloud(klien, payload.id)
+      await tulisLog(klien, payload.log)
       break
     }
 
     case 'menu': {
-      const payload = p as { menu: Parameters<typeof simpanMenuCloud>[0]; log?: LogAktivitas }
-      await simpanMenuCloud(payload.menu)
-      await tulisLog(payload.log)
+      const payload = p as { menu: Parameters<typeof simpanMenuCloud>[1]; log?: LogAktivitas }
+      await simpanMenuCloud(klien, payload.menu)
+      await tulisLog(klien, payload.log)
       break
     }
 
     case 'hapus_menu': {
       const payload = p as { id: string; log?: LogAktivitas }
-      await hapusMenuCloud(payload.id)
-      await tulisLog(payload.log)
+      await hapusMenuCloud(klien, payload.id)
+      await tulisLog(klien, payload.log)
       break
     }
 
     case 'pengaturan': {
       const payload = p as { pengaturan: Pengaturan; log?: LogAktivitas }
-      await simpanPengaturanCloud(payload.pengaturan)
-      await tulisLog(payload.log)
+      await simpanPengaturanCloud(klien, payload.pengaturan)
+      await tulisLog(klien, payload.log)
       break
     }
 
     case 'log': {
       const payload = p as { log: LogAktivitas }
-      await simpanLogCloud(payload.log)
+      await simpanLogCloud(payload.log, klien)
       break
     }
 
     case 'ganti_data': {
       const payload = p as { db: DB; log?: LogAktivitas }
-      await gantiSemuaDataCloud(payload.db, payload.log)
+      await gantiSemuaDataCloud(payload.db, payload.log, klien)
       break
     }
 

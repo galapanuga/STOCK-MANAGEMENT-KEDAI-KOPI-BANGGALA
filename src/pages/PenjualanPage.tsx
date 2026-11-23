@@ -45,6 +45,7 @@ export function PenjualanPage() {
   const [modalBuka, setModalBuka] = useState(false)
   const [diedit, setDiedit] = useState<Penjualan | null>(null)
   const [targetHapus, setTargetHapus] = useState<Penjualan | null>(null)
+  const [menghapus, setMenghapus] = useState(false)
 
   useEffect(() => {
     if (params.get('form') === 'baru') {
@@ -105,19 +106,21 @@ export function PenjualanPage() {
     setCari('')
   }
 
-  const konfirmasiHapus = () => {
-    if (!targetHapus) return
+  const konfirmasiHapus = async () => {
+    if (!targetHapus || menghapus) return
+    setMenghapus(true)
     try {
-      hapusPenjualan(targetHapus.id)
+      await hapusPenjualan(targetHapus.id)
       toast.sukses(
         `Penjualan ${targetHapus.nomor} dihapus. Stok bahan dikembalikan.`,
       )
+      setTargetHapus(null)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Gagal menghapus penjualan.',
       )
     } finally {
-      setTargetHapus(null)
+      setMenghapus(false)
     }
   }
 
@@ -370,12 +373,12 @@ export function PenjualanPage() {
         buka={modalBuka}
         tutup={() => setModalBuka(false)}
         penjualan={diedit}
-        onSimpan={(input) => {
+        onSimpan={async (input) => {
           if (diedit) {
-            ubahPenjualan(diedit.id, input)
+            await ubahPenjualan(diedit.id, input)
             toast.sukses(`Penjualan ${diedit.nomor} berhasil diperbarui.`)
           } else {
-            const p = catatPenjualan(input)
+            const p = await catatPenjualan(input)
             toast.sukses(
               `Penjualan ${p.nomor} dicatat${p.stokTerpotong ? ' dan stok dipotong.' : ' (sebagian stok tidak terpotong).'}`,
             )
@@ -396,7 +399,8 @@ export function PenjualanPage() {
         }
         labelKonfirmasi="Hapus penjualan"
         bahaya
-        onTutup={() => setTargetHapus(null)}
+        sedangProses={menghapus}
+        onTutup={() => { if (!menghapus) setTargetHapus(null) }}
         onKonfirmasi={konfirmasiHapus}
       />
     </div>
@@ -417,7 +421,7 @@ function PenjualanModal({
   buka: boolean
   tutup: () => void
   penjualan: Penjualan | null
-  onSimpan: (input: InputPenjualan) => void
+  onSimpan: (input: InputPenjualan) => Promise<void>
 }) {
   const { db, stok, bahanMap, menuMap } = useData()
   const [tanggal, setTanggal] = useState(sekarangInput())
@@ -425,6 +429,7 @@ function PenjualanModal({
   const [baris, setBaris] = useState<BarisItem[]>([])
   const [pilihan, setPilihan] = useState('')
   const [galat, setGalat] = useState('')
+  const [menyimpan, setMenyimpan] = useState(false)
 
   const opsiMenu = useMemo(() => {
     const aktif = db.menu.filter((m) => !m.arsip)
@@ -513,7 +518,8 @@ function PenjualanModal({
     setBaris((lama) => lama.filter((b) => b.menuId !== menuId))
   }
 
-  const kirim = () => {
+  const kirim = async () => {
+    if (menyimpan) return
     setGalat('')
     if (itemsAngka.length === 0) {
       return setGalat('Tambahkan minimal satu menu dengan jumlah lebih dari 0.')
@@ -533,8 +539,9 @@ function PenjualanModal({
       )
     }
 
+    setMenyimpan(true)
     try {
-      onSimpan({
+      await onSimpan({
         tanggal: waktu.toISOString(),
         items: itemsAngka,
         catatan,
@@ -543,13 +550,15 @@ function PenjualanModal({
       setGalat(
         error instanceof Error ? error.message : 'Gagal menyimpan penjualan.',
       )
+    } finally {
+      setMenyimpan(false)
     }
   }
 
   return (
     <Modal
       buka={buka}
-      tutup={tutup}
+      tutup={() => { if (!menyimpan) tutup() }}
       judul={penjualan ? 'Ubah Penjualan' : 'Catat Penjualan'}
       deskripsi={
         penjualan
@@ -559,22 +568,22 @@ function PenjualanModal({
       lebar="lg"
       footer={
         <>
-          <button className="btn btn-outline" onClick={tutup}>
+          <button className="btn btn-outline" onClick={tutup} disabled={menyimpan}>
             Batal
           </button>
           <button
             className="btn btn-primary"
             onClick={kirim}
-            disabled={opsiMenu.length === 0}
+            disabled={menyimpan || opsiMenu.length === 0}
           >
-            {penjualan ? 'Simpan perubahan' : 'Simpan penjualan'}
+            {menyimpan ? 'Menyimpan…' : penjualan ? 'Simpan perubahan' : 'Simpan penjualan'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         {galat && (
-          <p className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs leading-relaxed text-danger">
+          <p role="alert" className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs leading-relaxed text-danger">
             {galat}
           </p>
         )}

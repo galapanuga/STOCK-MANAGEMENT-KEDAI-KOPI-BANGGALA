@@ -37,6 +37,7 @@ export function MenuPage() {
   const [modalBuka, setModalBuka] = useState(false)
   const [diedit, setDiedit] = useState<Menu | null>(null)
   const [targetArsip, setTargetArsip] = useState<Menu | null>(null)
+  const [memprosesArsip, setMemprosesArsip] = useState(false)
 
   const daftar = useMemo(() => {
     const q = cari.trim().toLowerCase()
@@ -81,19 +82,21 @@ export function MenuPage() {
     toast.sukses('Daftar menu berhasil diunduh.')
   }
 
-  const konfirmasiArsip = () => {
-    if (!targetArsip) return
+  const konfirmasiArsip = async () => {
+    if (!targetArsip || memprosesArsip) return
+    setMemprosesArsip(true)
     try {
-      arsipMenu(targetArsip.id, !targetArsip.arsip)
+      await arsipMenu(targetArsip.id, !targetArsip.arsip)
       toast.sukses(
         targetArsip.arsip
           ? `Menu "${targetArsip.nama}" diaktifkan kembali.`
           : `Menu "${targetArsip.nama}" diarsipkan.`,
       )
+      setTargetArsip(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal mengubah menu.')
     } finally {
-      setTargetArsip(null)
+      setMemprosesArsip(false)
     }
   }
 
@@ -291,21 +294,15 @@ export function MenuPage() {
         buka={modalBuka}
         tutup={() => setModalBuka(false)}
         menu={diedit}
-        onSimpan={(input) => {
-          try {
-            if (diedit) {
-              ubahMenu(diedit.id, input)
-              toast.sukses(`Menu "${input.nama}" berhasil diperbarui.`)
-            } else {
-              tambahMenu(input)
-              toast.sukses(`Menu "${input.nama}" berhasil ditambahkan.`)
-            }
-            setModalBuka(false)
-          } catch (error) {
-            toast.error(
-              error instanceof Error ? error.message : 'Gagal menyimpan menu.',
-            )
+        onSimpan={async (input) => {
+          if (diedit) {
+            await ubahMenu(diedit.id, input)
+            toast.sukses(`Menu "${input.nama}" berhasil diperbarui.`)
+          } else {
+            await tambahMenu(input)
+            toast.sukses(`Menu "${input.nama}" berhasil ditambahkan.`)
           }
+          setModalBuka(false)
         }}
       />
 
@@ -319,7 +316,8 @@ export function MenuPage() {
         }
         labelKonfirmasi={targetArsip?.arsip ? 'Aktifkan' : 'Arsipkan'}
         bahaya={!targetArsip?.arsip}
-        onTutup={() => setTargetArsip(null)}
+        sedangProses={memprosesArsip}
+        onTutup={() => { if (!memprosesArsip) setTargetArsip(null) }}
         onKonfirmasi={konfirmasiArsip}
       />
     </div>
@@ -335,7 +333,7 @@ function MenuModal({
   buka: boolean
   tutup: () => void
   menu: Menu | null
-  onSimpan: (input: InputMenu) => void
+  onSimpan: (input: InputMenu) => Promise<void>
 }) {
   const { db, bahanMap } = useData()
   const [nama, setNama] = useState('')
@@ -344,6 +342,7 @@ function MenuModal({
   const [estimasi, setEstimasi] = useState(true)
   const [resep, setResep] = useState<BarisResep[]>([])
   const [galat, setGalat] = useState('')
+  const [menyimpan, setMenyimpan] = useState(false)
 
   useEffect(() => {
     if (!buka) return
@@ -395,7 +394,8 @@ function MenuModal({
     setResep((r) => r.filter((_, i) => i !== indeks))
   }
 
-  const kirim = () => {
+  const kirim = async () => {
+    if (menyimpan) return
     setGalat('')
     if (!nama.trim()) return setGalat('Nama menu wajib diisi.')
     if (!kategori.trim()) return setGalat('Kategori menu wajib dipilih.')
@@ -410,36 +410,43 @@ function MenuModal({
       daftar.push({ bahanId: baris.bahanId, jumlah })
     }
 
-    onSimpan({
-      nama: nama.trim(),
-      kategori,
-      deskripsi: deskripsi.trim() || undefined,
-      resep: daftar,
-      resepEstimasi: estimasi,
-    })
+    setMenyimpan(true)
+    try {
+      await onSimpan({
+        nama: nama.trim(),
+        kategori,
+        deskripsi: deskripsi.trim() || undefined,
+        resep: daftar,
+        resepEstimasi: estimasi,
+      })
+    } catch (error) {
+      setGalat(error instanceof Error ? error.message : 'Gagal menyimpan menu.')
+    } finally {
+      setMenyimpan(false)
+    }
   }
 
   return (
     <Modal
       buka={buka}
-      tutup={tutup}
+      tutup={() => { if (!menyimpan) tutup() }}
       judul={menu ? 'Ubah Menu' : 'Tambah Menu'}
       deskripsi="Resep menentukan bahan apa saja yang dipotong saat menu terjual."
       lebar="lg"
       footer={
         <>
-          <button className="btn btn-outline" onClick={tutup}>
+          <button className="btn btn-outline" onClick={tutup} disabled={menyimpan}>
             Batal
           </button>
-          <button className="btn btn-primary" onClick={kirim}>
-            {menu ? 'Simpan perubahan' : 'Tambah menu'}
+          <button className="btn btn-primary" onClick={kirim} disabled={menyimpan}>
+            {menyimpan ? 'Menyimpan…' : menu ? 'Simpan perubahan' : 'Tambah menu'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         {galat && (
-          <p className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
+          <p role="alert" className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
             {galat}
           </p>
         )}

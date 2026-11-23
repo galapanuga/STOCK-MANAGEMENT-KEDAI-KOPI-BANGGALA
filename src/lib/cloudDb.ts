@@ -409,41 +409,36 @@ export async function muatDBSupabase(): Promise<DB | null> {
 // TULIS MASTER DATA (RLS: hanya admin)
 // ==============================================================================
 
-export async function simpanBahanCloud(bahan: Bahan): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('bahan').upsert(mapBahanToRow(bahan))
+export async function simpanBahanCloud(klien: NonNullable<typeof supabase>, bahan: Bahan): Promise<void> {
+  const { error } = await klien.from('bahan').upsert(mapBahanToRow(bahan))
   if (error) throw error
 }
 
-export async function hapusBahanCloud(id: string): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('bahan').delete().eq('id', id)
+export async function hapusBahanCloud(klien: NonNullable<typeof supabase>, id: string): Promise<void> {
+  const { error } = await klien.from('bahan').delete().eq('id', id)
   if (error) throw error
 }
 
-export async function simpanMenuCloud(menu: Menu): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('menu').upsert(mapMenuToRow(menu))
+export async function simpanMenuCloud(klien: NonNullable<typeof supabase>, menu: Menu): Promise<void> {
+  const { error } = await klien.from('menu').upsert(mapMenuToRow(menu))
   if (error) throw error
 }
 
-export async function hapusMenuCloud(id: string): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('menu').delete().eq('id', id)
+export async function hapusMenuCloud(klien: NonNullable<typeof supabase>, id: string): Promise<void> {
+  const { error } = await klien.from('menu').delete().eq('id', id)
   if (error) throw error
 }
 
-export async function simpanPengaturanCloud(pengaturan: Pengaturan): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase
+export async function simpanPengaturanCloud(klien: NonNullable<typeof supabase>, pengaturan: Pengaturan): Promise<void> {
+  const { error } = await klien
     .from('pengaturan')
     .upsert(mapPengaturanToRow(pengaturan, 'utama'))
   if (error) throw error
 }
 
-export async function simpanLogCloud(log: LogAktivitas): Promise<void> {
-  if (!supabase) return
-  const { error } = await supabase.from('log_aktivitas').insert(mapLogToRow(log))
+export async function simpanLogCloud(log: LogAktivitas, klien = supabase): Promise<void> {
+  if (!klien) return
+  const { error } = await klien.from('log_aktivitas').insert(mapLogToRow(log))
   if (error) throw error
 }
 
@@ -478,6 +473,7 @@ export function dbKeBarisCloud(db: DB): DBCloud {
 export async function gantiSemuaDataCloud(
   db: DB,
   log?: LogAktivitas,
+  klien = supabase,
 ): Promise<void> {
   const payload = {
     p_db: dbKeBarisCloud(db),
@@ -487,11 +483,11 @@ export async function gantiSemuaDataCloud(
   if (new Blob([JSON.stringify(payload)]).size > 4 * 1024 * 1024) {
     throw new Error('Data melebihi batas unggahan 4 MiB. Data tidak diganti; hubungi admin.')
   }
-  if (!supabase) {
+  if (!klien) {
     throw new Error('Supabase belum dikonfigurasi.')
   }
 
-  const { error } = await supabase.rpc('ganti_semua_data', payload)
+  const { error } = await klien.rpc('ganti_semua_data', payload)
 
   if (error) {
     throw new Error(error.message || 'Gagal mengganti data cloud.')
