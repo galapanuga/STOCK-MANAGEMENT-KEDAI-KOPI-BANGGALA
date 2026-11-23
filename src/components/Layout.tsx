@@ -17,6 +17,7 @@ import {
   IconX,
 } from './Icons'
 import { StatusKoneksi } from './StatusKoneksi'
+import { PilihTema } from './PilihTema'
 import { formatTanggalPanjang, sapaan } from '../lib/format'
 const JUDUL_HALAMAN: Record<string, string> = {
   '/': 'Dashboard',
@@ -87,13 +88,13 @@ export function Layout() {
     <div className="app-surface min-h-screen">
       {menuTerbuka && (
         <div
-          className="animate-fade fixed inset-0 z-40 bg-espresso/50 backdrop-blur-[1px] lg:hidden"
+          className="animate-fade fixed inset-0 z-40 scheme-light bg-espresso/50 backdrop-blur-[1px] lg:hidden"
           onClick={() => setMenuTerbuka(false)}
         />
       )}
 
       <aside
-        className={`no-print fixed inset-y-0 left-0 z-50 flex w-[268px] flex-col bg-espresso text-cream transition-transform duration-300 lg:translate-x-0 ${
+        className={`no-print fixed inset-y-0 left-0 z-50 flex w-[268px] flex-col scheme-light bg-espresso text-cream transition-transform duration-300 lg:translate-x-0 ${
           menuTerbuka ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -201,25 +202,26 @@ export function Layout() {
       </aside>
 
       <div className="app-shell flex min-h-screen flex-col lg:pl-[268px]">
-        <header className="no-print sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-paper/90 px-4 shadow-[0_2px_10px_rgba(42,24,16,0.025)] backdrop-blur-md lg:px-8">
-          <div className="flex items-center gap-3">
+        <header className="no-print sticky top-0 z-30 flex min-h-16 items-center justify-between gap-2 border-b border-line bg-paper/90 px-3 py-2 shadow-[0_2px_10px_rgba(42,24,16,0.025)] backdrop-blur-md sm:gap-3 sm:px-4 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
-              className="rounded-lg border border-line bg-white p-2 text-mocha lg:hidden"
+              className="shrink-0 rounded-lg border border-line bg-white p-2 text-mocha lg:hidden"
               onClick={() => setMenuTerbuka(true)}
               aria-label="Buka menu"
             >
               <IconMenu className="size-5" />
             </button>
-            <div>
-              <p className="eyebrow text-muted">
+            <div className="min-w-0">
+              <p className="eyebrow truncate text-muted">
                 {db.pengaturan.namaKedai}
               </p>
-              <p className="font-display text-[15px] font-bold text-espresso">
+              <p className="truncate font-display text-[15px] font-bold text-espresso">
                 {JUDUL_HALAMAN[lokasi.pathname] ?? 'Dashboard'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <PilihTema />
             <StatusKoneksi />
             <div className="hidden text-right sm:block">
               <p className="text-[10px] font-semibold tracking-wide text-muted uppercase">

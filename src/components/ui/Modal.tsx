@@ -82,7 +82,7 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
-        className="animate-fade absolute inset-0 bg-espresso/45 backdrop-blur-[2px]"
+        className="animate-fade absolute inset-0 scheme-light bg-espresso/45 backdrop-blur-[2px]"
         onClick={tutup}
       />
       <div

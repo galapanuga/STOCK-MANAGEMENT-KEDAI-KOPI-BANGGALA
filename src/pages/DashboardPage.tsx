@@ -93,7 +93,7 @@ export function DashboardPage() {
 
   return (
     <div className="animate-rise">
-      <div className="relative mb-6 flex flex-col gap-4 overflow-hidden rounded-3xl border border-gold/15 bg-[linear-gradient(125deg,#190e09_0%,#2a1810_68%,#40271b_100%)] p-5 text-cream shadow-[0_12px_32px_rgba(42,24,16,0.12)] sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="relative mb-6 flex flex-col gap-4 overflow-hidden rounded-3xl border border-gold/15 scheme-light bg-[linear-gradient(125deg,#190e09_0%,#2a1810_68%,#40271b_100%)] p-5 text-cream shadow-[0_12px_32px_rgba(42,24,16,0.12)] sm:p-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="pointer-events-none absolute -top-24 right-12 size-64 rounded-full bg-gold/10 blur-3xl" />
         <div className="flex items-start gap-4">
           <div className="relative hidden size-12 shrink-0 place-items-center rounded-2xl border border-gold/15 bg-gold/10 text-gold sm:grid">

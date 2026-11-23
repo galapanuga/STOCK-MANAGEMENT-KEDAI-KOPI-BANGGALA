@@ -125,7 +125,7 @@ export function StatusKoneksi() {
   )
 
   const panel = panelBuka && konflikCount > 0 && (
-    <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-white p-3 text-left shadow-xl shadow-espresso/10">
+    <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-white p-3 text-left shadow-xl shadow-black/15">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-bold text-espresso">Transaksi perlu tindakan</p>
         <button

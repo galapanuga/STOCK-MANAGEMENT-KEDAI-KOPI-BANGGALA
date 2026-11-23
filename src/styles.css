@@ -33,26 +33,28 @@
 }
 
 @theme {
-  --color-espresso: #190e09;
-  --color-coffee: #2a1810;
-  --color-mocha: #625752;
-  --color-caramel: #a66a1e;
-  --color-caramel-dark: #855416;
-  --color-latte: #ead5bf;
-  --color-cream: #f8f3ef;
-  --color-sand: #f2ede9;
-  --color-line: #e7ddd6;
-  --color-ink: #1d1b19;
-  --color-muted: #625752;
+  --color-espresso: light-dark(#190e09, #f8eadd);
+  --color-coffee: light-dark(#2a1810, #ecd5c2);
+  --color-mocha: light-dark(#625752, #d5bfae);
+  --color-caramel: light-dark(#a66a1e, #eab06d);
+  --color-caramel-dark: light-dark(#855416, #f4c38b);
+  --color-latte: light-dark(#ead5bf, #614534);
+  --color-cream: light-dark(#f8f3ef, #1c1410);
+  --color-sand: light-dark(#f2ede9, #392a22);
+  --color-line: light-dark(#e7ddd6, #5b4538);
+  --color-ink: light-dark(#1d1b19, #f3e4d8);
+  --color-muted: light-dark(#625752, #cfb8a7);
   --color-gold: #f4bd65;
-  --color-paper: #fef8f4;
-  --color-white: #fffdfa;
-  --color-success: #2f7d5b;
-  --color-success-soft: #e4f2eb;
-  --color-warning: #b47a16;
-  --color-warning-soft: #fbf0d9;
-  --color-danger: #b4483c;
-  --color-danger-soft: #fbe9e7;
+  --color-paper: light-dark(#fef8f4, #241a15);
+  --color-white: light-dark(#fffdfa, #2b201a);
+  --color-success: light-dark(#2f7d5b, #8bd2ad);
+  --color-success-soft: light-dark(#e4f2eb, #20382d);
+  --color-warning: light-dark(#b47a16, #eec276);
+  --color-warning-strong: light-dark(#855416, #f4cd8b);
+  --color-warning-soft: light-dark(#fbf0d9, #42301c);
+  --color-danger: light-dark(#b4483c, #f3a29a);
+  --color-danger-soft: light-dark(#fbe9e7, #482722);
+  --color-on-action: light-dark(#fffdfa, #1c1410);
 
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
     "Helvetica Neue", Arial, sans-serif;
@@ -63,12 +65,19 @@
 
 @layer base {
   html {
+    color-scheme: light;
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
   }
 
   body {
     @apply bg-cream text-ink font-sans;
+  }
+
+  @media screen {
+    html { color-scheme: light dark; }
+    html[data-tema="terang"] { color-scheme: light; }
+    html[data-tema="gelap"] { color-scheme: dark; }
   }
 
   .app-surface {
@@ -79,6 +88,7 @@
 
   ::selection {
     background: var(--color-latte);
+    color: var(--color-ink);
   }
 
   input[type="date"]::-webkit-calendar-picker-indicator,
@@ -97,11 +107,11 @@
   }
 
   .btn-primary {
-    @apply bg-coffee text-white hover:bg-espresso;
+    @apply bg-coffee text-on-action hover:bg-espresso;
   }
 
   .btn-caramel {
-    @apply bg-caramel text-white hover:bg-caramel-dark;
+    @apply bg-caramel text-on-action hover:bg-caramel-dark;
   }
 
   .btn-outline {
@@ -113,7 +123,7 @@
   }
 
   .btn-danger {
-    @apply bg-danger text-white hover:opacity-90;
+    @apply bg-danger text-on-action hover:opacity-90;
   }
 
   .btn-sm {

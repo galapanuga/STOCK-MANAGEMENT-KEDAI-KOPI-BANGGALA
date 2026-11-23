@@ -53,7 +53,7 @@ export function LoginPage() {
 
   return (
     <div className="app-surface min-h-screen lg:grid lg:grid-cols-[1.02fr_1fr]">
-      <section className="relative hidden overflow-hidden bg-[linear-gradient(135deg,#190e09_0%,#2a1810_62%,#42291b_100%)] px-12 py-14 text-cream lg:flex lg:flex-col lg:justify-between">
+      <section className="relative hidden overflow-hidden scheme-light bg-[linear-gradient(135deg,#190e09_0%,#2a1810_62%,#42291b_100%)] px-12 py-14 text-cream lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-24 -right-24 size-[420px] rounded-full bg-gold/15 blur-3xl" />
           <div className="absolute bottom-0 -left-32 size-[380px] rounded-full bg-coffee/40 blur-3xl" />
@@ -122,7 +122,7 @@ export function LoginPage() {
       <section className="flex min-h-screen flex-col justify-center px-5 py-10 sm:px-10 lg:px-14">
         <div className="mx-auto w-full max-w-[380px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="flex h-11 w-[78px] items-center justify-center rounded-xl bg-paper px-1.5 shadow-sm">
+            <div className="flex h-11 w-[78px] items-center justify-center rounded-xl scheme-light bg-paper px-1.5 shadow-sm">
               <img
                 src="/images/logo.png"
                 alt="Kedai Kopi Banggala"
