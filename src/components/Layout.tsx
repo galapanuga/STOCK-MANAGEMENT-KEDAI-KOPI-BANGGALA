@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
@@ -45,6 +45,21 @@ export function Layout() {
   const toast = useToast()
   const lokasi = useLocation()
   const [menuTerbuka, setMenuTerbuka] = useState(false)
+  const bukaMenu = useRef<HTMLButtonElement>(null)
+  const tutupMenu = useRef<HTMLButtonElement>(null)
+  const tombolKeluar = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!menuTerbuka) return
+    tutupMenu.current?.focus()
+    const desktop = window.matchMedia('(min-width: 64rem)')
+    const sesuaikan = () => { if (desktop.matches) setMenuTerbuka(false) }
+    desktop.addEventListener('change', sesuaikan)
+    return () => {
+      desktop.removeEventListener('change', sesuaikan)
+      if (!desktop.matches) bukaMenu.current?.focus()
+    }
+  }, [menuTerbuka])
 
   useEffect(() => {
     setMenuTerbuka(false)
@@ -94,8 +109,24 @@ export function Layout() {
       )}
 
       <aside
+        id="menu-utama"
+        role={menuTerbuka ? 'dialog' : undefined}
+        aria-modal={menuTerbuka || undefined}
+        aria-label="Menu utama"
+        onKeyDown={(event) => {
+          if (!menuTerbuka) return
+          if (event.key === 'Escape') setMenuTerbuka(false)
+          if (event.key !== 'Tab') return
+          const [awal, akhir] = event.shiftKey
+            ? [tutupMenu.current, tombolKeluar.current]
+            : [tombolKeluar.current, tutupMenu.current]
+          if (event.target === awal) {
+            event.preventDefault()
+            akhir?.focus()
+          }
+        }}
         className={`no-print fixed inset-y-0 left-0 z-50 flex w-[268px] flex-col scheme-light bg-espresso text-cream transition-transform duration-300 lg:translate-x-0 ${
-          menuTerbuka ? 'translate-x-0' : '-translate-x-full'
+          menuTerbuka ? 'translate-x-0' : 'invisible -translate-x-full lg:visible'
         }`}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
@@ -117,7 +148,8 @@ export function Layout() {
             </div>
           </div>
           <button
-            className="rounded-lg p-1.5 text-latte/70 hover:bg-white/10 hover:text-white lg:hidden"
+            ref={tutupMenu}
+            className="grid size-11 shrink-0 place-items-center rounded-lg text-latte/70 hover:bg-white/10 hover:text-white lg:hidden"
             onClick={() => setMenuTerbuka(false)}
             aria-label="Tutup menu"
           >
@@ -128,7 +160,7 @@ export function Layout() {
         <div className="mx-5 mb-4 h-px bg-white/10" />
 
         <nav className="scroll-thin flex-1 space-y-1 overflow-y-auto px-3">
-          <p className="px-3 pb-2 text-[9px] font-bold tracking-[0.2em] text-latte/40 uppercase">
+          <p className="px-3 pb-2 text-[9px] font-bold tracking-[0.2em] text-latte/75 uppercase">
             Operasional
           </p>
           {navigasi.map((item) => (
@@ -152,7 +184,7 @@ export function Layout() {
 
           {user?.role === 'admin' && (
             <>
-              <p className="px-3 pt-5 pb-2 text-[9px] font-bold tracking-[0.2em] text-latte/40 uppercase">
+              <p className="px-3 pt-5 pb-2 text-[9px] font-bold tracking-[0.2em] text-latte/75 uppercase">
                 Administrasi
               </p>
               {navigasiAdmin.map((item) => (
@@ -181,13 +213,14 @@ export function Layout() {
                 <p className="truncate text-[13px] font-semibold text-white">
                   {user?.nama}
                 </p>
-                <p className="text-[10px] tracking-wide text-latte/50 uppercase">
+                <p className="text-[10px] tracking-wide text-latte/75 uppercase">
                   {user?.role === 'admin' ? 'Administrator' : 'Staf'}
                 </p>
               </div>
               <button
+                ref={tombolKeluar}
                 onClick={keluar}
-                className="rounded-lg p-1.5 text-latte/60 transition-colors hover:bg-white/10 hover:text-white"
+                className="grid size-11 shrink-0 place-items-center rounded-lg text-latte/75 transition-colors hover:bg-white/10 hover:text-white"
                 title="Keluar"
                 aria-label="Keluar"
               >
@@ -195,17 +228,20 @@ export function Layout() {
               </button>
             </div>
           </div>
-          <p className="mt-3 px-1 text-center text-[10px] text-latte/35">
+          <p className="mt-3 px-1 text-center text-[10px] text-latte/75">
             Hybrid Offline-First · Sinkronisasi Real-Time
           </p>
         </div>
       </aside>
 
-      <div className="app-shell flex min-h-screen flex-col lg:pl-[268px]">
+      <div inert={menuTerbuka} className="app-shell flex min-h-screen flex-col lg:pl-[268px]">
         <header className="no-print sticky top-0 z-30 flex min-h-16 items-center justify-between gap-2 border-b border-line bg-paper/90 px-3 py-2 shadow-[0_2px_10px_rgba(42,24,16,0.025)] backdrop-blur-md sm:gap-3 sm:px-4 lg:px-8">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
-              className="shrink-0 rounded-lg border border-line bg-white p-2 text-mocha lg:hidden"
+              ref={bukaMenu}
+              aria-expanded={menuTerbuka}
+              aria-controls="menu-utama"
+              className="grid size-11 shrink-0 place-items-center rounded-lg border border-line bg-white text-mocha lg:hidden"
               onClick={() => setMenuTerbuka(true)}
               aria-label="Buka menu"
             >
